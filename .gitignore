@@ -1,0 +1,6 @@
+# Lista blanca: solo scripts Python y documentación
+*
+!*/
+!.gitignore
+!DOCUMENTACION_PROYECTO.md
+!automatizacion/*.py
