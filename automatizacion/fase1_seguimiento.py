@@ -58,6 +58,7 @@ def _arg_path(nombre: str, defecto: Path) -> Path:
 BASE_DIR = Path(__file__).parent.parent / "Nueva carpeta (2)"
 FICHERO = _arg_path("seguimiento", BASE_DIR / "Seguimiento E2E VODAFONE.xlsx")
 JIRA_DR = _arg_path("jira", BASE_DIR / "JIRA con DR.xlsx")
+JIRA_OUT = _arg_path("jira-out", BASE_DIR / "JIRA.xlsx")
 HOJA_SIN_TITULO = _arg_path("hoja", BASE_DIR / "Hoja de cálculo sin título.xlsx")
 OUT_DIR = _arg_path("out", BASE_DIR / "resultados")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -479,7 +480,7 @@ def exportar_jira() -> None:
     Estructura: fila1 'VODAFONE', fila2 'IR_COMPLETO (Fiber2U)', fila3 vacía,
     fila4 cabeceras, datos desde fila5 (como espera la macro copiar_jira).
     """
-    destino = BASE_DIR / "JIRA.xlsx"
+    destino = JIRA_OUT
     t = time.time()
 
     # 1) Esquema canónico

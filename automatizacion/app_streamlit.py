@@ -4,22 +4,26 @@
 FASE 4 - Interfaz web (Streamlit)
 =================================
 
-Interfaz para lanzar la actualización completa sin usar la terminal:
-  - Sube los 4 archivos de entrada.
-  - Los guarda en `subidas/` (carpeta local del proyecto, no en %TEMP%).
-  - Ejecuta `main.py` pasándole esas rutas.
-  - Permite descargar seguimiento.xlsx y Legal_Final.xlsx.
-  - Borra los archivos de `subidas/` al terminar (éxito o error).
+Dos modos de trabajo:
+
+1. Carpeta local: el usuario indica una ruta (p. ej. Descargas\\Nueva carpeta (2))
+   y la app ejecuta el pipeline directamente sobre esos archivos, sin subirlos.
+2. Subida: cinco file_uploader; los archivos se guardan en `subidas/`.
+
+En ambos casos se ejecutan las Fases 1, 2 y 5 y se ofrecen tres descargas.
+La salida del proceso se lee en tiempo real (Popen + cola) para evitar
+bloqueos de buffer en Windows.
 
 Arranque:
-    cd /Users/user123/Library/CloudStorage/OneDrive-Personal/Documentos/semi
     PYTHONPATH=/tmp/my_py python3 -m streamlit run automatizacion/app_streamlit.py
 """
 
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -34,7 +38,6 @@ SALIDA = SUBIDAS / "resultados_app"
 MIME_XLSX = ("application/vnd.openxmlformats-officedocument."
              "spreadsheetml.sheet")
 
-# Etiqueta visible -> nombre limpio con el que se guarda en subidas/
 NOMBRES_LIMPIOS = {
     "Seguimiento E2E VODAFONE.xlsx": "seguimiento.xlsx",
     "JIRA con DR.xlsx": "jira.xlsx",
@@ -43,29 +46,34 @@ NOMBRES_LIMPIOS = {
     "plantilla_previsiones.xlsx": "plantilla.xlsx",
 }
 
-# ----------------------------------------------------------------------
-# Página
-# ----------------------------------------------------------------------
+ARCHIVOS_CARPETA = [
+    "Seguimiento E2E VODAFONE.xlsx",
+    "JIRA con DR.xlsx",
+    "Hoja de cálculo sin título.xlsx",
+    "MinisterioPowerBi.csv",
+    "plantilla_previsiones.xlsx",
+]
+REVISION = "Revision Legalizacion SEMI SemN.xlsx"
+
 st.set_page_config(page_title="Automatización de Informes SEMI",
                    page_icon="📊", layout="wide")
 
 st.title("📊 Automatización de Informes SEMI")
 st.write(
-    "Sube los cinco archivos de entrada y pulsa **🚀 Ejecutar Proceso**. "
-    "Se ejecutarán las Fases 1, 2 y 5 y se generarán los tres informes. "
-    "Los archivos se guardan temporalmente en `subidas/` y se eliminan al terminar."
+    "Puedes indicar una **carpeta local** con los archivos (recomendado en "
+    "Windows, evita subir ~100 MB) o subirlos aquí. Se ejecutarán las "
+    "**Fases 1, 2 y 5** y se generarán los tres informes."
 )
 
 
 # ----------------------------------------------------------------------
-# Entorno de los subprocesos
+# Utilidades
 # ----------------------------------------------------------------------
 def entorno_hijos() -> dict:
     env = os.environ.copy()
-    # Texto en UTF-8 también en la consola de Windows
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
-    # Permite lanzar sin PYTHONPATH en macOS si las librerías están en /tmp/my_py
+    env["PYTHONUNBUFFERED"] = "1"
     vendor = Path("/tmp/my_py")
     if vendor.is_dir():
         actual = env.get("PYTHONPATH", "")
@@ -75,7 +83,6 @@ def entorno_hijos() -> dict:
 
 
 def limpiar_subidas() -> None:
-    """Borra el contenido de subidas/ (se conserva la carpeta)."""
     if not SUBIDAS.is_dir():
         return
     for p in SUBIDAS.iterdir():
@@ -88,71 +95,202 @@ def limpiar_subidas() -> None:
             pass
 
 
+def _avance(linea: str, actual: int) -> int:
+    if "FASE 1" in linea:
+        return 10
+    if "FASE 2" in linea:
+        return 40
+    if "FASE 5" in linea:
+        return 65
+    if "[OK] Proceso completado" in linea:
+        return 100
+    return actual
+
+
+def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
+    """Lanza main.py y transmite su salida en vivo (sin bloquear el pipe)."""
+    proceso = subprocess.Popen(
+        cmd, cwd=str(BASE), env=entorno_hijos(),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    cola: queue.Queue = queue.Queue()
+
+    def lector():
+        try:
+            for linea in iter(proceso.stdout.readline, ""):
+                cola.put(linea)
+        finally:
+            cola.put(None)
+
+    threading.Thread(target=lector, daemon=True).start()
+
+    lineas = []
+    inicio = time.time()
+    ultimo = 0.0
+    avance = 0
+    try:
+        with st.status("Procesando datos...", expanded=True) as estado:
+            barra = st.progress(0, text="Iniciando el pipeline...")
+            while True:
+                try:
+                    linea = cola.get(timeout=0.5)
+                except queue.Empty:
+                    if time.time() - inicio > timeout:
+                        proceso.kill()
+                        raise TimeoutError(
+                            f"El proceso superó {timeout // 60} minutos."
+                        )
+                    continue
+
+                if linea is None:
+                    break
+
+                linea = linea.rstrip()
+                if not linea:
+                    continue
+                lineas.append(linea)
+                avance = _avance(linea, avance)
+
+                if time.time() - ultimo > 0.4:
+                    barra.progress(min(avance, 99), text=linea[:120])
+                    estado.update(label=f"Procesando... {linea[:90]}")
+                    ultimo = time.time()
+
+            codigo = proceso.wait()
+            if codigo != 0:
+                raise RuntimeError(f"El pipeline terminó con código {codigo}.")
+            barra.progress(100, text="Proceso completado")
+            estado.update(label="Proceso completado", state="complete")
+    except Exception:
+        if proceso.poll() is None:
+            proceso.kill()
+        raise
+    finally:
+        try:
+            proceso.stdout.close()
+        except Exception:
+            pass
+    return "\n".join(lineas)
+
+
+def leer_salidas(carpeta: Path) -> dict:
+    archivos = {
+        "seg": carpeta / "seguimiento.xlsx",
+        "legal": carpeta / "Legal_Final.xlsx",
+        "prev": carpeta / "Seguimiento_Previsiones_Limpio.xlsx",
+    }
+    faltan = [p.name for p in archivos.values() if not p.is_file()]
+    if faltan:
+        raise RuntimeError("No se generaron: " + ", ".join(faltan))
+    return {k: p.read_bytes() for k, p in archivos.items()}
+
+
 # ----------------------------------------------------------------------
-# Carga de archivos
+# 1 · Origen de los datos
 # ----------------------------------------------------------------------
-st.subheader("1 · Archivos de entrada")
-col1, col2 = st.columns(2)
+st.subheader("1 · Origen de los datos")
+ruta_texto = st.text_input(
+    "Ruta local de la carpeta de trabajo (opcional)",
+    placeholder=r"C:\Users\describa\Downloads\Nueva carpeta (2)",
+    help="Si la indicas, la app usa esos archivos y no sube nada. "
+         "Debe contener los 5 archivos y, preferiblemente, la Revision.",
+)
 
-with col1:
-    up_seg = st.file_uploader("Seguimiento E2E VODAFONE.xlsx", type=["xlsx"],
-                              key="seg", help="Libro de seguimiento (21 MB aprox.)")
-    up_jira = st.file_uploader("JIRA con DR.xlsx", type=["xlsx"],
-                               key="jira", help="Export de JIRA (35 MB aprox.)")
-with col2:
-    up_hoja = st.file_uploader("Hoja de cálculo sin título.xlsx", type=["xlsx"],
-                               key="hoja", help="Consolidado de JIRA (34 MB aprox.)")
-    up_csv = st.file_uploader("MinisterioPowerBi.csv", type=["csv"],
-                              key="csv", help="CSV del Ministerio (23 MB aprox.)")
-    up_plantilla = st.file_uploader("plantilla_previsiones.xlsx", type=["xlsx"],
-                                    key="plantilla",
-                                    help="Plantilla de PREVISIONES JUAN (Fase 5)")
+ruta = Path(ruta_texto.strip()).expanduser() if ruta_texto.strip() else None
+modo_ruta = ruta is not None
+faltan_carpeta: list = []
+revision_local = None
 
-subidos = {
-    "Seguimiento E2E VODAFONE.xlsx": up_seg,
-    "JIRA con DR.xlsx": up_jira,
-    "Hoja de cálculo sin título.xlsx": up_hoja,
-    "MinisterioPowerBi.csv": up_csv,
-    "plantilla_previsiones.xlsx": up_plantilla,
-}
-faltan = [n for n, f in subidos.items() if f is None]
-
-if faltan:
-    st.info("Faltan por subir: " + ", ".join(faltan))
+if modo_ruta:
+    if not ruta.is_dir():
+        st.error(f"La carpeta no existe: `{ruta}`")
+        faltan_carpeta = ["(carpeta no encontrada)"]
+    else:
+        faltan_carpeta = [n for n in ARCHIVOS_CARPETA if not (ruta / n).is_file()]
+        rev = ruta / REVISION
+        revision_local = rev if rev.is_file() else None
+        if faltan_carpeta:
+            st.error("Faltan en la carpeta: " + ", ".join(faltan_carpeta))
+        else:
+            st.success(f"5 archivos encontrados en `{ruta}`")
+        if revision_local is None:
+            st.warning(
+                f"No se encontró `{REVISION}`; se usará la de la carpeta del proyecto."
+            )
 else:
-    st.success("Los 5 archivos están listos. Puedes ejecutar el proceso.")
+    st.caption("O sube los archivos aquí:")
+    col1, col2 = st.columns(2)
+    with col1:
+        up_seg = st.file_uploader("Seguimiento E2E VODAFONE.xlsx", type=["xlsx"], key="seg")
+        up_jira = st.file_uploader("JIRA con DR.xlsx", type=["xlsx"], key="jira")
+        up_plantilla = st.file_uploader("plantilla_previsiones.xlsx", type=["xlsx"],
+                                        key="plantilla")
+    with col2:
+        up_hoja = st.file_uploader("Hoja de cálculo sin título.xlsx", type=["xlsx"],
+                                   key="hoja")
+        up_csv = st.file_uploader("MinisterioPowerBi.csv", type=["csv"], key="csv")
+
+    subidos = {
+        "Seguimiento E2E VODAFONE.xlsx": up_seg,
+        "JIRA con DR.xlsx": up_jira,
+        "Hoja de cálculo sin título.xlsx": up_hoja,
+        "MinisterioPowerBi.csv": up_csv,
+        "plantilla_previsiones.xlsx": up_plantilla,
+    }
+    faltan_subida = [n for n, f in subidos.items() if f is None]
+    if faltan_subida:
+        st.info("Faltan por subir: " + ", ".join(faltan_subida))
+    else:
+        st.success("Los 5 archivos están listos.")
+
 
 # ----------------------------------------------------------------------
-# Ejecución
+# 2 · Ejecución
 # ----------------------------------------------------------------------
 if "resultado" not in st.session_state:
     st.session_state.resultado = None
 
 st.subheader("2 · Ejecución")
-pulsado = st.button("🚀 Ejecutar Proceso", type="primary", use_container_width=True)
-
-
-def cola(texto: str, lineas: int = 30) -> str:
-    return "\n".join((texto or "").strip().splitlines()[-lineas:])
-
+pulsado = st.button("🚀 Ejecutar Proceso", type="primary", width="stretch")
 
 if pulsado:
     st.session_state.resultado = None
+    error = None
+    carpeta_salida = None
+    limpiar = False
 
-    if faltan:
-        st.error("No se puede ejecutar: falta por subir " + ", ".join(faltan) + ".")
-    else:
-        SUBIDAS.mkdir(parents=True, exist_ok=True)
-        SALIDA.mkdir(parents=True, exist_ok=True)
-        proceso = None
-        try:
+    try:
+        if modo_ruta:
+            if faltan_carpeta:
+                raise RuntimeError("Revisa la carpeta: " + ", ".join(faltan_carpeta))
+            carpeta_salida = ruta / "resultados_app"
+            carpeta_salida.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                sys.executable, str(MAIN),
+                f"--seguimiento={ruta / 'Seguimiento E2E VODAFONE.xlsx'}",
+                f"--jira={ruta / 'JIRA con DR.xlsx'}",
+                f"--hoja={ruta / 'Hoja de cálculo sin título.xlsx'}",
+                f"--csv={ruta / 'MinisterioPowerBi.csv'}",
+                f"--plantilla={ruta / 'plantilla_previsiones.xlsx'}",
+                f"--jira-out={carpeta_salida / 'JIRA.xlsx'}",
+                f"--out={carpeta_salida}",
+            ]
+            if revision_local is not None:
+                cmd.append(f"--revision={revision_local}")
+        else:
+            if faltan_subida:
+                raise RuntimeError("Faltan archivos por subir: "
+                                   + ", ".join(faltan_subida))
+            SUBIDAS.mkdir(parents=True, exist_ok=True)
+            SALIDA.mkdir(parents=True, exist_ok=True)
+            limpiar = True
             rutas = {}
             for etiqueta, archivo in subidos.items():
                 destino = SUBIDAS / NOMBRES_LIMPIOS[etiqueta]
                 destino.write_bytes(archivo.getvalue())
                 rutas[etiqueta] = destino
-
-            t0 = time.time()
+            carpeta_salida = SALIDA
             cmd = [
                 sys.executable, str(MAIN),
                 f"--seguimiento={rutas['Seguimiento E2E VODAFONE.xlsx']}",
@@ -160,48 +298,31 @@ if pulsado:
                 f"--hoja={rutas['Hoja de cálculo sin título.xlsx']}",
                 f"--csv={rutas['MinisterioPowerBi.csv']}",
                 f"--plantilla={rutas['plantilla_previsiones.xlsx']}",
+                f"--jira-out={SALIDA / 'JIRA.xlsx'}",
                 f"--out={SALIDA}",
             ]
 
-            with st.spinner("Procesando datos... (puede tardar varios minutos)"):
-                proceso = subprocess.run(
-                    cmd, cwd=str(BASE), env=entorno_hijos(),
-                    capture_output=True, text=True, timeout=1800,
-                )
-                if proceso.returncode != 0:
-                    raise RuntimeError(
-                        "El proceso terminó con errores (código "
-                        f"{proceso.returncode})."
-                    )
+        t0 = time.time()
+        log = ejecutar_con_progreso(cmd, timeout=3600)
+        datos = leer_salidas(carpeta_salida)
+        datos.update({"elapsed": time.time() - t0, "log": log})
+        st.session_state.resultado = datos
 
-                f_seg = SALIDA / "seguimiento.xlsx"
-                f_legal = SALIDA / "Legal_Final.xlsx"
-                f_prev = SALIDA / "Seguimiento_Previsiones_Limpio.xlsx"
-                if not (f_seg.is_file() and f_legal.is_file() and f_prev.is_file()):
-                    raise RuntimeError(
-                        "El proceso terminó pero no se generaron los tres archivos esperados."
-                    )
-
-                st.session_state.resultado = {
-                    "seg": f_seg.read_bytes(),
-                    "legal": f_legal.read_bytes(),
-                    "prev": f_prev.read_bytes(),
-                    "elapsed": time.time() - t0,
-                    "log": (proceso.stdout or "") + "\n" + (proceso.stderr or ""),
-                }
-
-        except subprocess.TimeoutExpired:
-            st.error("❌ El proceso superó el tiempo máximo permitido (30 minutos).")
-        except Exception as e:  # noqa: BLE001
-            st.error(f"❌ {e}")
-            if proceso is not None:
-                st.code(cola((proceso.stdout or "") + "\n" + (proceso.stderr or "")),
-                        language="text")
-        finally:
+    except TimeoutError as e:
+        error = str(e)
+    except Exception as e:  # noqa: BLE001
+        error = str(e)
+    finally:
+        if limpiar:
             limpiar_subidas()
 
+    if error:
+        st.error(error)
+        st.caption("Revisa el registro o ejecuta `main.py` en terminal para ver el detalle.")
+
+
 # ----------------------------------------------------------------------
-# Resultados y descargas
+# 3 · Resultados
 # ----------------------------------------------------------------------
 res = st.session_state.resultado
 if res:
@@ -211,31 +332,31 @@ if res:
     d1, d2, d3 = st.columns(3)
     with d1:
         st.download_button(
-            "⬇️ Descargar seguimiento.xlsx",
+            "⬇️ seguimiento.xlsx",
             data=res["seg"],
             file_name="seguimiento.xlsx",
             mime=MIME_XLSX,
-            use_container_width=True,
+            width="stretch",
             key="dl_seg",
         )
-        st.caption(f"{len(res['seg']) / 1e6:.2f} MB · hoja NUEVO SEGUIMIENTO")
+        st.caption(f"{len(res['seg']) / 1e6:.2f} MB · NUEVO SEGUIMIENTO")
     with d2:
         st.download_button(
-            "⬇️ Descargar Legal_Final.xlsx",
+            "⬇️ Legal_Final.xlsx",
             data=res["legal"],
             file_name="Legal_Final.xlsx",
             mime=MIME_XLSX,
-            use_container_width=True,
+            width="stretch",
             key="dl_legal",
         )
-        st.caption(f"{len(res['legal']) / 1e6:.2f} MB · hojas LEGAL_VDF y LEGAL_OSP")
+        st.caption(f"{len(res['legal']) / 1e6:.2f} MB · LEGAL_VDF / LEGAL_OSP")
     with d3:
         st.download_button(
-            "⬇️ Descargar Seguimiento_Previsiones_Limpio.xlsx",
+            "⬇️ Seguimiento_Previsiones_Limpio.xlsx",
             data=res["prev"],
             file_name="Seguimiento_Previsiones_Limpio.xlsx",
             mime=MIME_XLSX,
-            use_container_width=True,
+            width="stretch",
             key="dl_prev",
         )
         st.caption(f"{len(res['prev']) / 1e6:.2f} MB · 7 hojas")
@@ -245,7 +366,6 @@ if res:
 
 st.divider()
 st.caption(
-    "Fase 1: actualiza VOLCADO JIRA desde JIRA con DR + Hoja sin título y "
-    "recalcula NUEVO SEGUIMIENTO. Fase 2: procesa el CSV del Ministerio y "
-    "genera la matriz VDF/OSP."
+    "Fase 1: actualiza el Seguimiento E2E. Fase 2: genera el Legal VDF/OSP. "
+    "Fase 5: construye el Seguimiento de Previsiones limpio (ZOOM incluido)."
 )

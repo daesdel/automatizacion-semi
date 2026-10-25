@@ -233,23 +233,28 @@ Tiempo de referencia: **≈60 s** (10 s + 8 s + 41 s en Mac).
 
 ## 5. Fase 4 — Interfaz Streamlit
 
-`app_streamlit.py` ofrece:
+`app_streamlit.py` ofrece **dos modos**:
 
-1. Título y descripción.
-2. **Cinco** `st.file_uploader`: Seguimiento, JIRA con DR, Hoja sin título,
-   MinisterioPowerBi.csv y `plantilla_previsiones.xlsx`.
-3. Botón **🚀 Ejecutar Proceso**.
-4. Guarda los archivos en **`subidas/`** (local al proyecto, no en `%TEMP%`)
-   con nombres limpios:
-   `seguimiento.xlsx`, `jira.xlsx`, `hoja.xlsx`, `ministerio.csv`,
-   `plantilla.xlsx`.
-5. Ejecuta **`main.py`** (Fases 1 + 2 + 5) y `--out=subidas/resultados_app`.
-6. Spinner durante el proceso (puede tardar varios minutos).
-7. Al terminar: mensaje de éxito, tiempo y **tres** `st.download_button`:
-   `seguimiento.xlsx`, `Legal_Final.xlsx` y
-   `Seguimiento_Previsiones_Limpio.xlsx`.
-8. `limpiar_subidas()` en `finally`: borra todo (éxito o error).
-9. Subprocesos con `PYTHONIOENCODING=utf-8` y `PYTHONUTF8=1`.
+1. **Carpeta local (recomendado en Windows)**: campo de texto con la ruta
+   (p. ej. `C:\Users\describa\Downloads\Nueva carpeta (2)`). La app lee los
+   5 archivos de ahí y escribe `resultados_app/` en la misma carpeta; no sube
+   nada ni usa `subidas/`.
+2. **Subida**: cinco `st.file_uploader` (Seguimiento, JIRA con DR, Hoja sin
+   título, CSV del Ministerio y `plantilla_previsiones.xlsx`). Se guardan en
+   `subidas/` con nombres limpios y se borran al terminar.
+
+En ambos modos:
+
+- Botón **🚀 Ejecutar Proceso**.
+- Ejecuta **`main.py`** (Fases 1 + 2 + 5).
+- Salida leída **en tiempo real** con `Popen` + cola y `PYTHONUNBUFFERED=1`
+  (evita el bloqueo del buffer en Windows), con `st.status`, `st.progress` y
+  un **timeout de 60 minutos**.
+- `--jira-out` deja el `JIRA.xlsx` intermedio en la carpeta de salida (local),
+  no en OneDrive.
+- Al terminar: tiempo y **tres descargas**: `seguimiento.xlsx`,
+  `Legal_Final.xlsx` y `Seguimiento_Previsiones_Limpio.xlsx`.
+- El pie de página menciona las Fases 1, 2 y 5.
 
 ### Arranque
 
@@ -338,9 +343,13 @@ La plantilla arrastra el formato exacto del original:
 | 6 | Proyecto & Subproyecto (E) | `*jumping*` |
 
 - 5 semanas dinámicas (lunes actual + 4) + No planificada + Total.
+- Cabeceras con formato **`WXX_AAAA`** (p. ej. `W43_2026`), calculadas con
+  `ISOWEEKNUM` y el año ISO. Los `COUNTIFS` usan una **fila oculta** con las
+  fechas reales (el rótulo visible es texto).
 - Base común: patrón + `Fecha PO` (T) > 0.
-- `No planificada`: Previsión RFOA (AV) vacía o `"-"` **y** Fecha RFOA (AU)
-  vacía o `"-"`. Así no se cuentan incidencias ya terminadas (con Fecha RFOA).
+- `No planificada`: sin Fecha RFOA (AU vacía o `"-"`) **y** alguna de:
+  - Previsión RFOA (AV) vacía o `"-"`,
+  - AV anterior al lunes de la semana actual (planificar en el pasado no vale).
 - **Total = suma de las 5 semanas + No planificada** (las fechas fuera de la
   ventana no se muestran).
 - Patrón editable en la celda amarilla `B` de cada tabla.
@@ -368,6 +377,7 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 | Lee la hoja equivocada | Resuelto: selección dinámica por cobertura de columnas |
 | Streamlit se cuelga con archivos en `%TEMP%` | Resuelto: carpeta local `subidas/` |
 | `server.port does not work...` | `.streamlit/config.toml` con `developmentMode = false` |
+| La app se colapsa en Windows | Modo carpeta local + `Popen` en streaming (sin buffer) y timeout 60 min |
 | Fechas corruptas año 2525 | `agregar_fechas()` trabaja en microsegundos |
 
 ---
@@ -384,9 +394,12 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   disponibles y `subidas/` vacía al terminar.
 - Fase 5: generación probada en Mac (39,9 s, 15,1 MB), plantilla de 4,9 MB,
   3.775 únicas fórmulas matriciales en AL y 21 reglas de formato condicional.
-- Pipeline completo Fases 1+2+5: 59,11 s (10,06 + 8,16 + 40,88) y tres
+- Pipeline completo Fases 1+2+5: 58,42 s (9,97 + 7,82 + 40,62) y tres
   archivos generados.
-- Streamlit: 5 cargadores y 3 botones de descarga verificados.
+- Streamlit: dos modos (carpeta local / subida), 5 cargadores, progreso en
+  vivo, timeout 60 min y 3 botones de descarga verificados.
+- ZOOM: cabeceras `WXX_AAAA`, fila oculta de fechas y No planificadas con
+  AV pasada + AU vacía.
 - Git: repositorio inicializado, commit `0d2b14c`, solo 9 archivos versionados.
 
 ---
@@ -397,7 +410,7 @@ El repositorio local ya está inicializado y con el primer commit:
 
 ```bash
 git log --oneline -1
-# 0d2b14c Fase 1 a 5 completadas. Pipeline de automatizacion en Python
+# (hash del último commit)
 ```
 
 `.gitignore` usa **lista blanca**: solo se versionan los `.py`, este
@@ -410,7 +423,7 @@ git log --oneline -1
 2. Desde la carpeta del proyecto:
 
 ```bash
-git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
+git remote add origin https://github.com/daesdel/automatizacion-semi.git
 git branch -M main
 git push -u origin main
 ```
@@ -418,7 +431,7 @@ git push -u origin main
 Si usas SSH:
 
 ```bash
-git remote add origin git@github.com:TU_USUARIO/TU_REPO.git
+git remote add origin git@github.com:daesdel/automatizacion-semi.git
 git branch -M main
 git push -u origin main
 ```

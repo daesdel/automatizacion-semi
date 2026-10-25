@@ -53,7 +53,7 @@ FASE1 = HERE / "fase1_seguimiento.py"
 FASE2 = HERE / "fase2_legal.py"
 FASE5 = HERE / "fase5_previsiones.py"
 
-JIRA_EXPORT = DATA / "JIRA.xlsx"
+JIRA_EXPORT = _arg_path("jira-out", DATA / "JIRA.xlsx")
 PLANTILLA = _arg_path("plantilla", DATA / "plantilla_previsiones.xlsx")
 REVISION = _arg_path("revision", DATA / "Revision Legalizacion SEMI SemN.xlsx")
 
@@ -191,6 +191,7 @@ def main() -> int:
         f"--seguimiento={ENTRADAS['Seguimiento E2E']}",
         f"--jira={ENTRADAS['JIRA con DR']}",
         f"--hoja={ENTRADAS['Hoja sin título']}",
+        f"--jira-out={JIRA_EXPORT}",
         f"--out={OUT_DIR}",
     ]
     if not SIN_REFRESH:

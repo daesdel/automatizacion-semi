@@ -256,16 +256,16 @@ def _criterios_base(campo: str, f_patron: int) -> str:
             f"'PREVISIONES JUAN'!$T:$T,\">0\"")
 
 
-def _f_semana(campo: str, f_patron: int, f_cab: int, col: str) -> str:
+def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str) -> str:
     return (
         f"=COUNTIFS({_criterios_base(campo, f_patron)},"
-        f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_cab},"
-        f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_cab}+6))"
+        f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_fechas},"
+        f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_fechas}+6))"
     )
 
 
-def _f_no_plan(campo: str, f_patron: int) -> str:
-    """No planificada: AV vacía/"-" Y AU (Fecha RFOA) vacía/"-"."""
+def _f_no_plan(campo: str, f_patron: int, f_inicio: int) -> str:
+    """No planificada: sin AV, o AV anterior al lunes actual; y sin AU."""
     base = _criterios_base(campo, f_patron)
     partes = []
     for av in ("", "-"):
@@ -274,6 +274,11 @@ def _f_no_plan(campo: str, f_patron: int) -> str:
                 f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\"{av}\","
                 f"'PREVISIONES JUAN'!$AU:$AU,\"{au}\")"
             )
+    for au in ("", "-"):
+        partes.append(
+            f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\"<\"&B{f_inicio},"
+            f"'PREVISIONES JUAN'!$AU:$AU,\"{au}\")"
+        )
     return "=" + "+".join(partes)
 
 
@@ -300,6 +305,7 @@ def escribir_zoom(wb) -> None:
     ws.merge_range(
         1, 0, 1, 7,
         "Semana 1 = lunes de la semana actual. Solo se cuentan incidencias con Fecha PO. "
+        "No planificada = sin Previsión RFOA, sin Fecha RFOA, o Previsión RFOA anterior a esta semana. "
         "Total = 5 semanas + no planificadas (las fechas fuera de la ventana no se muestran). "
         "El patrón se edita en la celda amarilla y admite *comodines*.",
         f_sub,
@@ -316,29 +322,49 @@ def escribir_zoom(wb) -> None:
         ws.write_string(fila_patron, 4, "Proyectos Radio" if campo == "G"
                         else "Proyecto & Subproyecto", f_lbl)
 
-        fila_cab = fila + 2
-        ws.write_string(fila_cab, 0, "Semana", f_cab)
-        ws.write_formula(fila_cab, 1, "=TODAY()-WEEKDAY(TODAY(),2)+1", f_fecha)
+        # Fila oculta con las fechas reales (los COUNTIFS necesitan fechas)
+        fila_fechas = fila + 2
+        ws.set_row(fila_fechas, None, None, {"hidden": True})
+        ws.write_formula(fila_fechas, 1, "=TODAY()-WEEKDAY(TODAY(),2)+1", f_fecha)
         for k in range(2, 6):
             prev = get_column_letter(k)
-            ws.write_formula(fila_cab, k, f"={prev}{fila_cab + 1}+7", f_fecha)
+            ws.write_formula(fila_fechas, k, f"={prev}{fila_fechas + 1}+7", f_fecha)
+
+        # Cabecera visible: WXX_AAAA
+        fila_cab = fila + 3
+        ws.write_string(fila_cab, 0, "Semana", f_cab)
+        for k in range(1, 6):
+            col = get_column_letter(k + 1)
+            ws.write_formula(
+                fila_cab, k,
+                f'="W"&TEXT(ISOWEEKNUM({col}{fila_fechas + 1}),"00")&"_"'
+                f'&YEAR({col}{fila_fechas + 1}-WEEKDAY({col}{fila_fechas + 1},2)+4)',
+                f_cab,
+            )
         ws.write_string(fila_cab, 6, "No planificada", f_cab)
         ws.write_string(fila_cab, 7, "Total", f_cab)
 
-        fila_datos = fila + 3
+        fila_datos = fila + 4
         ws.write_string(fila_datos, 0, "Nº incidencias", f_lbl)
         for k in range(1, 6):
             col = get_column_letter(k + 1)
-            ws.write_formula(fila_datos, k,
-                             _f_semana(campo, fila_patron + 1, fila_cab + 1, col),
-                             f_num)
-        ws.write_formula(fila_datos, 6, _f_no_plan(campo, fila_patron + 1), f_num)
+            ws.write_formula(
+                fila_datos, k,
+                _f_semana(campo, fila_patron + 1, fila_fechas + 1, col),
+                f_num,
+            )
+        ws.write_formula(
+            fila_datos, 6,
+            _f_no_plan(campo, fila_patron + 1, fila_fechas + 1),
+            f_num,
+        )
         ws.write_formula(
             fila_datos, 7,
             f"=SUM(B{fila_datos + 1}:F{fila_datos + 1})+G{fila_datos + 1}",
             f_num,
         )
-        fila += 5
+        fila += 6
+
     print("    ZOOM: 6 escenarios")
 
 
