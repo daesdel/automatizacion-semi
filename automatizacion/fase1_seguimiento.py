@@ -665,6 +665,23 @@ def validar(orig: pd.DataFrame, nuevo: pd.DataFrame) -> None:
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
+def validar_irs(df_in: pd.DataFrame, df_out: pd.DataFrame) -> None:
+    """Comprueba que no se ha perdido ninguna clave entre origen y salida."""
+    def claves(df):
+        s = df["IR"].astype(str).str.strip()
+        return s[(s != "") & (s.str.lower() != "nan")]
+
+    a, b = claves(df_in), claves(df_out)
+    perdidos = sorted(set(a) - set(b))
+    print(f"    IRs: origen={len(a):,} ({len(set(a)):,} únicos) | "
+          f"salida={len(b):,} | último={b.iloc[-1] if len(b) else '—'}")
+    if perdidos:
+        raise RuntimeError(
+            f"Se han perdido {len(perdidos)} IRs al generar seguimiento.xlsx: "
+            f"{perdidos[:10]}"
+        )
+
+
 def main() -> None:
     t_total = time.time()
     print("=" * 70)
@@ -712,6 +729,7 @@ def main() -> None:
     for fila in limpio.itertuples(index=False, name=None):
         ws.append(fila)
     wb.save(salida)
+    validar_irs(df_ns, df_out)
     print(f"\n[5] Escrito {salida.name}: {salida.stat().st_size / 1e6:.2f} MB "
           f"({time.time() - t0:.2f}s)")
 

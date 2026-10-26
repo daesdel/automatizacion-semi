@@ -150,6 +150,19 @@ pico ≈0,9–1,3 GB.
 
 ---
 
+### 2.7 Control de filas perdidas
+
+Investigación sobre las últimas filas de `NUEVO SEGUIMIENTO`:
+
+- Original: **8.501 filas**; generado: **8.195 filas**. Las **306 filas
+  restantes están completamente vacías** (ni IR ni datos en A:EI).
+- Los **7.649 IR son idénticos** en orden, conjunto y último valor
+  (`IR-120228`); no falta ningún ticket.
+- `dropna(how="all")` se aplica solo a `VOLCADO JIRA` y `Encendidos ZR`,
+  **nunca** a `NUEVO SEGUIMIENTO`.
+- Nueva validación `validar_irs(df_ns, df_out)`: compara los IR de origen y
+  salida y **aborta** si falta alguno, mostrando cuántos hay y el último.
+
 ## 3. Fase 2 — Legal (Ministerio VDF/OSP)
 
 ### 3.1 Qué hace
@@ -441,6 +454,8 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 - Fase 5: generación desde el archivo anterior probada en Mac; A/H/AB/AJ
   calculadas, fórmulas heredadas, DETALLE_TICKETS visible y 21 reglas de
   formato condicional.
+- Fase 1: 8.501 filas originales vs 8.195 generadas; 306 finales vacías y
+  7.649/7.649 IR conservados (`validar_irs`).
 - Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
 - Streamlit en modo carpeta local con archivo anterior: 137,8 s, 3 descargas,
