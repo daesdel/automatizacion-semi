@@ -51,7 +51,7 @@ for _stream in (sys.stdout, sys.stderr):
 BASE_DIR = Path(__file__).parent.parent / "Nueva carpeta (2)"
 CSV_PATH = _arg_path("csv", BASE_DIR / "MinisterioPowerBi.csv")
 OUT_DIR = _arg_path("out", BASE_DIR / "resultados")
-OUT_PATH = OUT_DIR / "Legal_Final.xlsx"
+OUT_PATH = OUT_DIR / f"{date.today():%d%m%Y}_legal ministerio.xlsx"
 
 COL_CLAVE = "Clave de incidencia"
 COL_TEC = "Tecnologia"
@@ -267,7 +267,7 @@ def escribir_libro(resultados: dict):
     f_clave = wb.add_format({"bold": False})
 
     for etiqueta, (idx, bloques, consolidados) in resultados.items():
-        escribir_hoja(wb, f"LEGAL_{etiqueta}", etiqueta, idx, bloques,
+        escribir_hoja(wb, f"legal_{etiqueta.lower()}", etiqueta, idx, bloques,
                       consolidados, f_fecha, f_cab, f_grupo, f_clave)
     wb.close()
     print(f"[7] Escrito: {OUT_PATH} ({OUT_PATH.stat().st_size / 1e6:.2f} MB)")
@@ -279,7 +279,7 @@ def escribir_libro(resultados: dict):
 def main() -> None:
     t0 = time.time()
     print("=" * 70)
-    print("  FASE 2 - LEGAL (MinisterioPowerBi.csv -> Legal_Final.xlsx)")
+    print(f"  FASE 2 - LEGAL (MinisterioPowerBi.csv -> {OUT_PATH.name})")
     print("=" * 70)
     if not CSV_PATH.exists():
         sys.exit(f"No existe {CSV_PATH}")
@@ -308,7 +308,7 @@ def main() -> None:
               f"de {len(idx) * 33:,}")
         resultados[etiqueta] = (idx, bloques, consolidados)
 
-    print("\n[6] Escribiendo Legal_Final.xlsx...")
+    print(f"\n[6] Escribiendo {OUT_PATH.name}...")
     escribir_libro(resultados)
 
     print("\n" + "=" * 70)

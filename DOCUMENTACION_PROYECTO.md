@@ -13,7 +13,7 @@ ejecutando macros de Excel:
 | Fase | Script | Qué produce |
 |---|---|---|
 | 1 | `automatizacion/fase1_seguimiento.py` | `resultados/seguimiento.xlsx` |
-| 2 | `automatizacion/fase2_legal.py` | `resultados/Legal_Final.xlsx` |
+| 2 | `automatizacion/fase2_legal.py` | `resultados/DDMMYYYY_legal ministerio.xlsx` |
 | 3 | `automatizacion/main.py` | Ejecuta Fases 1 + 2 + 5 en cadena |
 | 4 | `automatizacion/app_streamlit.py` | Interfaz web para no usar la terminal |
 | 5 | `automatizacion/fase5_previsiones.py` | `Seguimiento_Previsiones_Limpio.xlsx` |
@@ -42,7 +42,7 @@ semi/
     ├── Seguimiento_Previsiones_Limpio.xlsx   # salida Fase 5
     └── resultados/
         ├── seguimiento.xlsx
-        └── Legal_Final.xlsx
+        └── DDMMYYYY_legal ministerio.xlsx
 ```
 
 ### Dependencias
@@ -165,14 +165,14 @@ pico ≈0,9–1,3 GB.
    `clave_tecnologia` (primera coincidencia, como VLOOKUP).
 6. Construye la matriz final: 1 fila por clave única y **33 celdas**
    (11 tecnologías × 3 bloques EMF/AMT/PSC).
-7. Escribe `resultados/Legal_Final.xlsx` con `LEGAL_VDF` y `LEGAL_OSP`,
-   solo valores y fechas reales (`dd/mm/yyyy`).
+7. Escribe `resultados/DDMMYYYY_legal ministerio.xlsx` con las hojas
+   `legal_vdf` y `legal_osp`, solo valores y fechas reales (`dd/mm/yyyy`).
 
 ### 3.2 Entradas / salidas
 
 | Entrada | Salida |
 |---|---|
-| `MinisterioPowerBi.csv` | `resultados/Legal_Final.xlsx` (2 hojas) |
+| `MinisterioPowerBi.csv` | `resultados/DDMMYYYY_legal ministerio.xlsx` (hojas `legal_vdf` / `legal_osp`) |
 
 ### 3.3 Estructura de cada hoja
 
@@ -212,7 +212,7 @@ Ejecuta Fase 1, Fase 2 y Fase 5 en cadena:
    la Revision) y los scripts; si falta algo, no ejecuta nada.
 2. **Fase 1** con `--refresh` y rutas explícitas (genera `JIRA.xlsx`).
 3. **Fase 2** con el CSV.
-4. **Fase 5** con la plantilla, `JIRA.xlsx`, `Legal_Final.xlsx` y
+4. **Fase 5** con la plantilla, `JIRA.xlsx`, el legal fechado y
    `seguimiento.xlsx`.
 5. **Resumen**: tiempos por fase, total y tres archivos generados.
 
@@ -253,7 +253,7 @@ En ambos modos:
 - `--jira-out` deja el `JIRA.xlsx` intermedio en la carpeta de salida (local),
   no en OneDrive.
 - Al terminar: tiempo y **tres descargas**: `seguimiento.xlsx`,
-  `Legal_Final.xlsx` y `Seguimiento_Previsiones_Limpio.xlsx`.
+  `DDMMYYYY_legal ministerio.xlsx` y `Seguimiento_Previsiones_Limpio.xlsx`.
 - El pie de página menciona las Fases 1, 2 y 5.
 
 ### Arranque
@@ -286,8 +286,9 @@ La Fase 5 ya **no lee** `SEGUIMIENTO PREVISIONES.xlsx`. Se apoya en:
 
 | Pieza | Papel |
 |---|---|
-| `plantilla_previsiones.xlsx` | `PREVISIONES JUAN` (fórmulas, constantes y formato) + `DATA IN` (solo cabeceras e índice) |
+| `plantilla_previsiones.xlsx` | **Solo** `PREVISIONES JUAN`: cabeceras, fórmulas, columnas manuales (A, H, AB, AJ) y celdas `AUTO` donde no hay fórmula |
 | `crear_plantilla.py` | Genera la plantilla **una sola vez** desde el libro original |
+| `data_in_headers.py` | Cabeceras (205 con nombre + 56 vacías) e índice 1…261 de `DATA IN` |
 | `estilos_previsiones.py` | Especificación estática de fuentes, rellenos, bordes, anchos, alto y freeze |
 | `fase5_previsiones.py` | Inyecta los datos de Fase 1/2 y genera el libro final |
 
@@ -295,12 +296,13 @@ Origen de cada hoja del libro final:
 
 | Hoja | Fuente |
 |---|---|
-| `DATA IN` | Cabeceras/índice de la plantilla + datos de `JIRA.xlsx` (`IR_VDF`, desde fila 5) |
-| `LEGAL VDF` / `LEGAL OSP` | `resultados/Legal_Final.xlsx` |
-| `PREVISIONES JUAN` | Plantilla (fórmulas + constantes) |
+| `DATA IN` | `data_in_headers.py` + datos de `JIRA.xlsx` (`IR_VDF`, desde fila 5) |
+| `LEGAL VDF` / `LEGAL OSP` | `resultados/DDMMYYYY_legal ministerio.xlsx` (hojas `legal_vdf` / `legal_osp`) |
+| `PREVISIONES JUAN` | Plantilla (fórmulas + manuales; las celdas `AUTO` se dejan vacías) |
 | `drive` | `resultados/seguimiento.xlsx` columnas B, AC, BV, DY |
 | `Leg_Wn` | `Revision Legalizacion SEMI SemN.xlsx` → `Detalle` (A:I, M, V:Z) |
 | `ZOOM` | Se calcula con `COUNTIFS` |
+| `DETALLE_TICKETS` | Hoja **oculta** de drill-down generada desde `JIRA.xlsx` |
 
 ### 6.2 Arreglo de ArrayFormula
 
@@ -342,17 +344,31 @@ La plantilla arrastra el formato exacto del original:
 | 5 | Proyecto & Subproyecto (E) | `*upgrade*` |
 | 6 | Proyecto & Subproyecto (E) | `*jumping*` |
 
-- 5 semanas dinámicas (lunes actual + 4) + No planificada + Total.
-- Cabeceras con formato **`WXX_AAAA`** (p. ej. `W43_2026`), calculadas con
-  `ISOWEEKNUM` y el año ISO. Los `COUNTIFS` usan una **fila oculta** con las
-  fechas reales (el rótulo visible es texto).
+- 5 semanas dinámicas (lunes actual + 4) + No planificada + **> 5 sem** + Total.
+- Cabeceras **`WXX_AAAA`** con `WEEKNUM(fecha,21)` (semana ISO) y año ISO.
+  Los `COUNTIFS` usan una **fila oculta** con las fechas reales.
 - Base común: patrón + `Fecha PO` (T) > 0.
+- **Ejecutadas antes**: si la Fecha RFOA real (AU) es anterior al lunes actual,
+  la incidencia **no** cuenta como planificada en ninguna semana (aunque su
+  Previsión RFOA sea de esta semana o futura). Si AU es de esta semana, sí
+  cuenta.
 - `No planificada`: sin Fecha RFOA (AU vacía o `"-"`) **y** alguna de:
   - Previsión RFOA (AV) vacía o `"-"`,
-  - AV anterior al lunes de la semana actual (planificar en el pasado no vale).
-- **Total = suma de las 5 semanas + No planificada** (las fechas fuera de la
-  ventana no se muestran).
-- Patrón editable en la celda amarilla `B` de cada tabla.
+  - AV anterior al lunes de la semana actual.
+- **> 5 sem**: AV posterior al domingo de la semana 5 (y no ejecutada antes).
+- **Total = 5 semanas + No planificada + > 5 sem**.
+- Títulos combinados A:I, centrados, Calibri 14:
+  `PORTADORAS 5G700`, `PORTADORAS 5G3700`, `PORTADORAS 5G1800`,
+  `PORTADORAS 4G`, `CAPACIDAD UPGRADE`, `JUMPING`.
+- Fila de parámetros (patrón/campo) **oculta**.
+- Texto de la fila de datos: **“Nº de Tickets JIRA”**.
+
+> **Nota sobre fórmulas “en español”**: el XML de un `.xlsx` guarda siempre
+> los nombres de función en inglés (`TEXT`, `YEAR`, `WEEKDAY`, `WEEKNUM`).
+> Escribir `TEXTO`, `AÑO`, `DIASEM` o `ISO.NUM.DE.SEMANA` dentro del archivo lo
+> corrompe. Excel en español los muestra traducidos automáticamente. El error
+> anterior venía de `ISOWEEKNUM`; se sustituyó por `WEEKNUM(fecha,21)`, que es
+> nativo y funciona en Excel ES (se ve como `NUM.DE.SEMANA`).
 
 ### 6.5 Generación
 
@@ -364,7 +380,7 @@ python automatizacion/crear_plantilla.py
 python automatizacion/fase5_previsiones.py
 ```
 
-Salida: `Nueva carpeta (2)/Seguimiento_Previsiones_Limpio.xlsx` (~15 MB).
+Salida: `Nueva carpeta (2)/resultados/Seguimiento_Previsiones_Limpio.xlsx` (~15,5 MB).
 La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 
 ## 7. Problemas conocidos y soluciones
@@ -394,12 +410,13 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   disponibles y `subidas/` vacía al terminar.
 - Fase 5: generación probada en Mac (39,9 s, 15,1 MB), plantilla de 4,9 MB,
   3.775 únicas fórmulas matriciales en AL y 21 reglas de formato condicional.
-- Pipeline completo Fases 1+2+5: 58,42 s (9,97 + 7,82 + 40,62) y tres
-  archivos generados.
-- Streamlit: dos modos (carpeta local / subida), 5 cargadores, progreso en
-  vivo, timeout 60 min y 3 botones de descarga verificados.
-- ZOOM: cabeceras `WXX_AAAA`, fila oculta de fechas y No planificadas con
-  AV pasada + AU vacía.
+- Pipeline completo Fases 1+2+5: 65,69 s (9,96 + 7,85 + 47,89) y tres
+  archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
+- Streamlit en modo carpeta local: 134,0 s, 3 descargas (la del legal con su
+  nombre fechado), sin errores.
+- ZOOM: cabeceras `WXX_AAAA` con `WEEKNUM(...,21)`, columna `> 5 sem`,
+  exclusión de ejecutadas antes y hoja oculta `DETALLE_TICKETS` (9.388 filas).
+- Plantilla: solo `PREVISIONES JUAN` (sin `DATA IN`).
 - Git: repositorio inicializado, commit `0d2b14c`, solo 9 archivos versionados.
 
 ---

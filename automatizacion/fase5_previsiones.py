@@ -23,7 +23,7 @@ Uso:
 
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import re as _re
 import xlsxwriter.worksheet as _xw
@@ -60,23 +60,36 @@ def _arg_path(nombre: str, defecto: Path) -> Path:
 
 PLANTILLA = _arg_path("plantilla", BASE_DIR / "plantilla_previsiones.xlsx")
 JIRA = _arg_path("jira", BASE_DIR / "JIRA.xlsx")
-LEGAL = _arg_path("legal", BASE_DIR / "resultados" / "Legal_Final.xlsx")
+LEGAL = _arg_path("legal", BASE_DIR / "resultados" /
+                  f"{date.today():%d%m%Y}_legal ministerio.xlsx")
 SEGUIMIENTO = _arg_path("seguimiento", BASE_DIR / "resultados" / "seguimiento.xlsx")
 REVISION = _arg_path("revision", BASE_DIR / "Revision Legalizacion SEMI SemN.xlsx")
-DESTINO = _arg_path("out", BASE_DIR / "Seguimiento_Previsiones_Limpio.xlsx")
+DESTINO = _arg_path("out", BASE_DIR / "resultados" / "Seguimiento_Previsiones_Limpio.xlsx")
 
 sys.path.insert(0, str(HERE))
 import estilos_previsiones as est  # noqa: E402
+import data_in_headers as dih  # noqa: E402
 
 # (campo, patrón editable, descripción)
 ESCENARIOS = [
-    ("G", "*portadoras) 5G 7*",  'Proyectos Radio contiene "portadoras) 5G 7"'),
-    ("G", "*portadoras) 5g 37*", 'Proyectos Radio contiene "portadoras) 5g 37"'),
-    ("G", "*portadoras*18*",     'Proyectos Radio contiene "portadoras" y "18"'),
-    ("G", "*4g*",                'Proyectos Radio contiene "4g"'),
-    ("E", "*upgrade*",           'Proyecto & Subproyecto contiene "upgrade"'),
-    ("E", "*jumping*",           'Proyecto & Subproyecto contiene "jumping"'),
+    ("G", "*portadoras) 5G 7*", "PORTADORAS 5G700",
+     'Proyectos Radio contiene "portadoras) 5G 7"'),
+    ("G", "*portadoras) 5g 37*", "PORTADORAS 5G3700",
+     'Proyectos Radio contiene "portadoras) 5g 37"'),
+    ("G", "*portadoras*18*", "PORTADORAS 5G1800",
+     'Proyectos Radio contiene "portadoras" y "18"'),
+    ("G", "*4g*", "PORTADORAS 4G", 'Proyectos Radio contiene "4g"'),
+    ("E", "*upgrade*", "CAPACIDAD UPGRADE",
+     'Proyecto & Subproyecto contiene "upgrade"'),
+    ("E", "*jumping*", "JUMPING", 'Proyecto & Subproyecto contiene "jumping"'),
 ]
+
+
+def _coincide(patron: str, texto: str) -> bool:
+    """Comodín simple: *a*b* -> todas las partes presentes."""
+    partes = [p for p in patron.strip("*").lower().split("*") if p]
+    texto = (texto or "").lower()
+    return all(p in texto for p in partes)
 
 
 # ----------------------------------------------------------------------
@@ -140,14 +153,13 @@ def escribir_previsiones(wb, ws_origen) -> None:
 # ----------------------------------------------------------------------
 # DATA IN: cabeceras de plantilla + datos de JIRA
 # ----------------------------------------------------------------------
-def escribir_data_in(wb, ws_plantilla, ws_jira, fmt_fecha, fmt_cab) -> None:
+def escribir_data_in(wb, ws_jira, fmt_fecha, fmt_cab) -> None:
     ws = wb.add_worksheet("DATA IN")
     ws.set_column(0, 0, 18)
     ws.set_column(1, 260, 12)
 
-    it = ws_plantilla.iter_rows(min_row=1, max_row=2, max_col=261, values_only=True)
-    hdr = next(it)
-    idx = next(it)
+    hdr = dih.HEADERS
+    idx = dih.INDICE
     for c, valor in enumerate(hdr):
         if valor not in (None, ""):
             ws.write_string(0, c, str(valor), fmt_cab)
@@ -257,11 +269,22 @@ def _criterios_base(campo: str, f_patron: int) -> str:
 
 
 def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str) -> str:
-    return (
-        f"=COUNTIFS({_criterios_base(campo, f_patron)},"
-        f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_fechas},"
-        f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_fechas}+6))"
-    )
+    base = _criterios_base(campo, f_patron)
+    rango = (f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_fechas},"
+             f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_fechas}+6)")
+    total = f"COUNTIFS({base},{rango})"
+    hechas = (f"COUNTIFS({base},{rango},"
+              f"'PREVISIONES JUAN'!$AU:$AU,\"<\"&B{f_fechas})")
+    return f"={total}-{hechas}"
+
+
+def _f_mas5(campo: str, f_patron: int, f_fechas: int) -> str:
+    base = _criterios_base(campo, f_patron)
+    limite = f"F{f_fechas}+6"
+    total = f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite})"
+    hechas = (f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite},"
+              f"'PREVISIONES JUAN'!$AU:$AU,\"<\"&B{f_fechas})")
+    return f"={total}-{hechas}"
 
 
 def _f_no_plan(campo: str, f_patron: int, f_inicio: int) -> str:
@@ -287,12 +310,15 @@ def escribir_zoom(wb) -> None:
     ws.set_column(0, 0, 34)
     ws.set_column(1, 5, 12)
     ws.set_column(6, 6, 16)
-    ws.set_column(7, 7, 10)
+    ws.set_column(7, 7, 12)
+    ws.set_column(8, 8, 10)
 
     f_titulo = wb.add_format({"bold": True, "font_size": 14, "font_color": "#FFFFFF",
-                              "bg_color": "#1F4E78", "align": "left", "valign": "vcenter"})
+                              "bg_color": "#1F4E78", "align": "center",
+                              "valign": "vcenter"})
     f_sub = wb.add_format({"italic": True, "font_color": "#555555", "text_wrap": True})
-    f_esc = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1})
+    f_esc = wb.add_format({"bold": True, "font_size": 14, "bg_color": "#D9E1F2",
+                           "border": 1, "align": "center", "valign": "vcenter"})
     f_lbl = wb.add_format({"bold": True, "border": 1})
     f_pat = wb.add_format({"bg_color": "#FFF2CC", "border": 1})
     f_cab = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1,
@@ -301,21 +327,22 @@ def escribir_zoom(wb) -> None:
                              "align": "center", "bg_color": "#D9E1F2"})
     f_num = wb.add_format({"border": 1, "align": "center"})
 
-    ws.merge_range(0, 0, 0, 7, "ZOOM · Incidencias planificadas (Previsión RFOA)", f_titulo)
+    ws.merge_range(0, 0, 0, 8, "ZOOM · Incidencias planificadas (Previsión RFOA)", f_titulo)
     ws.merge_range(
-        1, 0, 1, 7,
+        1, 0, 1, 8,
         "Semana 1 = lunes de la semana actual. Solo se cuentan incidencias con Fecha PO. "
         "No planificada = sin Previsión RFOA, sin Fecha RFOA, o Previsión RFOA anterior a esta semana. "
-        "Total = 5 semanas + no planificadas (las fechas fuera de la ventana no se muestran). "
-        "El patrón se edita en la celda amarilla y admite *comodines*.",
+        "No se cuentan como planificadas las ya ejecutadas en semanas anteriores. "
+        "Total = 5 semanas + No planificada + > 5 sem.",
         f_sub,
     )
 
     fila = 3
-    for i, (campo, patron, descripcion) in enumerate(ESCENARIOS, start=1):
-        ws.merge_range(fila, 0, fila, 7, f"ESCENARIO {i} · {descripcion}", f_esc)
+    for campo, patron, nombre, descripcion in ESCENARIOS:
+        ws.merge_range(fila, 0, fila, 8, nombre, f_esc)
 
         fila_patron = fila + 1
+        ws.set_row(fila_patron, None, None, {"hidden": True})
         ws.write_string(fila_patron, 0, "Patrón", f_lbl)
         ws.write_string(fila_patron, 1, patron, f_pat)
         ws.write_string(fila_patron, 3, "Campo", f_lbl)
@@ -337,15 +364,16 @@ def escribir_zoom(wb) -> None:
             col = get_column_letter(k + 1)
             ws.write_formula(
                 fila_cab, k,
-                f'="W"&TEXT(ISOWEEKNUM({col}{fila_fechas + 1}),"00")&"_"'
+                f'="W"&TEXT(WEEKNUM({col}{fila_fechas + 1},21),"00")&"_"'
                 f'&YEAR({col}{fila_fechas + 1}-WEEKDAY({col}{fila_fechas + 1},2)+4)',
                 f_cab,
             )
         ws.write_string(fila_cab, 6, "No planificada", f_cab)
-        ws.write_string(fila_cab, 7, "Total", f_cab)
+        ws.write_string(fila_cab, 7, "> 5 sem", f_cab)
+        ws.write_string(fila_cab, 8, "Total", f_cab)
 
         fila_datos = fila + 4
-        ws.write_string(fila_datos, 0, "Nº incidencias", f_lbl)
+        ws.write_string(fila_datos, 0, "Nº de Tickets JIRA", f_lbl)
         for k in range(1, 6):
             col = get_column_letter(k + 1)
             ws.write_formula(
@@ -360,12 +388,82 @@ def escribir_zoom(wb) -> None:
         )
         ws.write_formula(
             fila_datos, 7,
-            f"=SUM(B{fila_datos + 1}:F{fila_datos + 1})+G{fila_datos + 1}",
+            _f_mas5(campo, fila_patron + 1, fila_fechas + 1),
+            f_num,
+        )
+        ws.write_formula(
+            fila_datos, 8,
+            f"=SUM(B{fila_datos + 1}:F{fila_datos + 1})"
+            f"+G{fila_datos + 1}+H{fila_datos + 1}",
             f_num,
         )
         fila += 6
 
     print("    ZOOM: 6 escenarios")
+
+
+# ----------------------------------------------------------------------
+# DETALLE_TICKETS (hoja oculta de drill-down)
+# ----------------------------------------------------------------------
+def _semana_txt(av, lunes: date) -> str:
+    if isinstance(av, datetime):
+        av = av.date()
+    if not isinstance(av, date):
+        return "Sin previsión"
+    if av < lunes:
+        return "Pasada"
+    if av > lunes + timedelta(days=34):
+        return "> 5 sem"
+    iso = av.isocalendar()
+    return f"W{iso[1]:02d}_{iso[0]}"
+
+
+def escribir_detalle(wb, ws_jira, fmt_fecha, fmt_cab) -> None:
+    ws = wb.add_worksheet("DETALLE_TICKETS")
+    titulos = ["Escenario", "IR", "Semana previsión", "Estado", "Fecha PO",
+               "Previsión RFOA", "Fecha RFOA", "Proyectos Radio",
+               "Proyecto & Subproyecto"]
+    for c, t in enumerate(titulos):
+        ws.write_string(0, c, t, fmt_cab)
+    ws.set_column(0, 0, 22)
+    ws.set_column(1, 1, 14)
+    ws.set_column(2, 2, 14)
+    ws.set_column(3, 3, 20)
+    ws.set_column(4, 6, 14)
+    ws.set_column(7, 8, 45)
+
+    hdr = list(next(ws_jira.iter_rows(min_row=4, max_row=4, values_only=True)))
+    idx = {h: i for i, h in enumerate(hdr) if h}
+    lunes = date.today() - timedelta(days=date.today().weekday())
+
+    def val(fila, nombre):
+        i = idx.get(nombre)
+        return fila[i] if i is not None and i < len(fila) else None
+
+    r = 1
+    for fila in ws_jira.iter_rows(min_row=5, values_only=True):
+        t = val(fila, "Fecha PO")
+        if not isinstance(t, (date, datetime)):
+            continue
+        g = val(fila, "Proyectos Radio")
+        e = val(fila, "Proyecto & Subproyecto")
+        for campo, patron, nombre, _ in ESCENARIOS:
+            texto = g if campo == "G" else e
+            if not _coincide(patron, texto):
+                continue
+            av = val(fila, "Prevision RFOA")
+            datos = [nombre, val(fila, "Clave"), _semana_txt(av, lunes),
+                     val(fila, "Estado"), t, av, val(fila, "Real RFOA"),
+                     g, e]
+            for c, v in enumerate(datos):
+                if c in (2, 4, 5, 6):
+                    volcar(ws, r, c, v, None, fmt_fecha)
+                else:
+                    volcar(ws, r, c, v, None, fmt_fecha)
+            r += 1
+    ws.hide()
+    print(f"    DETALLE_TICKETS: {r - 1:,} filas (oculta)")
+
 
 
 # ----------------------------------------------------------------------
@@ -386,6 +484,7 @@ def main() -> None:
     print("[1] Abriendo plantilla y fuentes...")
     wb_plantilla = openpyxl.load_workbook(PLANTILLA, read_only=True, data_only=False)
     wb_jira = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
+    wb_detalle = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
     wb_legal = openpyxl.load_workbook(LEGAL, read_only=True, data_only=True)
     wb_seg = openpyxl.load_workbook(SEGUIMIENTO, read_only=True, data_only=True)
     wb_rev = openpyxl.load_workbook(REVISION, read_only=True, data_only=True)
@@ -397,17 +496,17 @@ def main() -> None:
     fmt_cab = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1,
                              "align": "center", "valign": "vcenter"})
 
-    escribir_data_in(wb, wb_plantilla["DATA IN"], wb_jira["IR_VDF"],
-                     fmt_fecha, fmt_cab)
-    escribir_legal(wb, "LEGAL OSP", wb_legal["LEGAL_OSP"], "OSP", fmt_fecha, fmt_cab)
-    escribir_legal(wb, "LEGAL VDF", wb_legal["LEGAL_VDF"], "VDF", fmt_fecha, fmt_cab)
+    escribir_data_in(wb, wb_jira["IR_VDF"], fmt_fecha, fmt_cab)
+    escribir_legal(wb, "LEGAL OSP", wb_legal["legal_osp"], "OSP", fmt_fecha, fmt_cab)
+    escribir_legal(wb, "LEGAL VDF", wb_legal["legal_vdf"], "VDF", fmt_fecha, fmt_cab)
     escribir_previsiones(wb, wb_plantilla["PREVISIONES JUAN"])
     escribir_zoom(wb)
+    escribir_detalle(wb, wb_detalle["IR_VDF"], fmt_fecha, fmt_cab)
     escribir_drive(wb, wb_seg["NUEVO SEGUIMIENTO"], fmt_fecha, fmt_cab)
     escribir_leg_wn(wb, wb_rev["Detalle"], fmt_fecha, fmt_cab)
 
     wb.close()
-    for w in (wb_plantilla, wb_jira, wb_legal, wb_seg, wb_rev):
+    for w in (wb_plantilla, wb_jira, wb_detalle, wb_legal, wb_seg, wb_rev):
         w.close()
 
     tam = DESTINO.stat().st_size / 1e6

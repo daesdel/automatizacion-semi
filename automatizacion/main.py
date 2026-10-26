@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 # Consola de Windows (cp1252): evita UnicodeEncodeError al imprimir símbolos.
@@ -68,7 +69,7 @@ ENTRADAS = {
 
 SALIDAS = {
     "Fase 1 - Seguimiento": OUT_DIR / "seguimiento.xlsx",
-    "Fase 2 - Legal": OUT_DIR / "Legal_Final.xlsx",
+    "Fase 2 - Legal": OUT_DIR / f"{date.today():%d%m%Y}_legal ministerio.xlsx",
     "Fase 5 - Previsiones": OUT_DIR / "Seguimiento_Previsiones_Limpio.xlsx",
 }
 
@@ -233,7 +234,7 @@ def main() -> int:
             print("  Fases 1 y 2 completadas; la Fase 5 no se ejecutó.")
         elif "Fase 1" in tiempos:
             print(f"  La Fase 1 sí terminó: {SALIDAS['Fase 1 - Seguimiento'].name} está disponible.")
-            print("  La Fase 2 no se ejecutó; Legal_Final.xlsx no se ha actualizado.")
+            print("  La Fase 2 no se ejecutó; el archivo legal no se ha actualizado.")
         else:
             print("  No se ha generado ningún archivo nuevo.")
         return 1

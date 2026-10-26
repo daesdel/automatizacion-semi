@@ -175,15 +175,21 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
 
 
 def leer_salidas(carpeta: Path) -> dict:
+    legales = sorted(carpeta.glob("*_legal ministerio.xlsx"),
+                     key=lambda p: p.stat().st_mtime)
     archivos = {
         "seg": carpeta / "seguimiento.xlsx",
-        "legal": carpeta / "Legal_Final.xlsx",
         "prev": carpeta / "Seguimiento_Previsiones_Limpio.xlsx",
     }
     faltan = [p.name for p in archivos.values() if not p.is_file()]
+    if not legales:
+        faltan.append("*_legal ministerio.xlsx")
     if faltan:
         raise RuntimeError("No se generaron: " + ", ".join(faltan))
-    return {k: p.read_bytes() for k, p in archivos.items()}
+    datos = {k: p.read_bytes() for k, p in archivos.items()}
+    datos["legal"] = legales[-1].read_bytes()
+    datos["legal_name"] = legales[-1].name
+    return datos
 
 
 # ----------------------------------------------------------------------
@@ -342,14 +348,14 @@ if res:
         st.caption(f"{len(res['seg']) / 1e6:.2f} MB · NUEVO SEGUIMIENTO")
     with d2:
         st.download_button(
-            "⬇️ Legal_Final.xlsx",
+            f"⬇️ {res.get('legal_name', 'legal ministerio.xlsx')}",
             data=res["legal"],
-            file_name="Legal_Final.xlsx",
+            file_name=res.get("legal_name", "legal ministerio.xlsx"),
             mime=MIME_XLSX,
             width="stretch",
             key="dl_legal",
         )
-        st.caption(f"{len(res['legal']) / 1e6:.2f} MB · LEGAL_VDF / LEGAL_OSP")
+        st.caption(f"{len(res['legal']) / 1e6:.2f} MB · legal_vdf / legal_osp")
     with d3:
         st.download_button(
             "⬇️ Seguimiento_Previsiones_Limpio.xlsx",

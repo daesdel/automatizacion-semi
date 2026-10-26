@@ -5,7 +5,7 @@ Genera plantilla_previsiones.xlsx (una sola vez).
 
 Contiene:
   - PREVISIONES JUAN: constantes, fórmulas y formato exacto (87 columnas, sin CH).
-  - DATA IN: solo cabeceras (fila 1) e índice (fila 2).
+  - Solo PREVISIONES JUAN (sin DATA IN).
 
 A partir de aquí, fase5_previsiones.py ya no necesita el libro original.
 """
@@ -90,7 +90,16 @@ def main() -> None:
                     continue
                 destino += 1
                 fmt = cab[destino] if r == 0 else dat[destino]
-                escribir(ws, r, destino - 1, valor, fmt, fmt_fecha)
+                manual = destino in (1, 8, 28, 36)  # A, H, AB, AJ
+                if (r > 0 and not manual
+                        and not isinstance(valor, ArrayFormula)
+                        and not (isinstance(valor, str) and valor.startswith("="))
+                        and valor in (None, "")):
+                    valor = "AUTO"
+                if valor == "AUTO":
+                    ws.write_string(r, destino - 1, "AUTO", fmt)
+                else:
+                    escribir(ws, r, destino - 1, valor, fmt, fmt_fecha)
             filas = r + 1
 
     # Formato condicional (7 estados)
@@ -107,20 +116,6 @@ def main() -> None:
                 "criteria": f'=$N{ref}="{texto}"',
                 "format": fmt,
             })
-
-    # ---------------- DATA IN (solo 2 filas) ----------------
-    ws2 = wb.add_worksheet("DATA IN")
-    fmt_cab = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1})
-    it = wb_src["DATA IN"].iter_rows(min_row=1, max_row=2, max_col=261, values_only=True)
-    hdr = next(it)
-    idx = next(it)
-    for c, valor in enumerate(hdr):
-        if valor not in (None, ""):
-            ws2.write_string(0, c, str(valor), fmt_cab)
-    for c, valor in enumerate(idx):
-        if valor not in (None, ""):
-            ws2.write_number(1, c, valor)
-    ws2.set_column(0, 260, 12)
 
     wb.close()
     wb_src.close()
