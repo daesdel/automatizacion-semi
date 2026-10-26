@@ -4,17 +4,17 @@
 FASE 5 - Archivo limpio: Seguimiento_Previsiones_Limpio.xlsx
 =============================================================
 
-Genera el libro con 7 hojas a partir de:
+Genera el libro con 8 hojas a partir de:
 
-    plantilla_previsiones.xlsx   -> PREVISIONES JUAN (fórmulas + formato) y
-                                    cabeceras/índice de DATA IN
-    JIRA.xlsx (Fase 1)           -> datos de DATA IN
-    resultados/Legal_Final.xlsx  -> LEGAL VDF / LEGAL OSP
-    resultados/seguimiento.xlsx  -> drive
-    Revision Legalizacion ...    -> Leg_Wn
-    (ZOOM se calcula)
+    Seguimiento_Previsiones_Limpio.xlsx (semana anterior) -> PREVISIONES JUAN
+    JIRA.xlsx                                             -> DATA IN + detalle
+    resultados/DDMMYYYY_legal ministerio.xlsx             -> LEGAL VDF / OSP
+    resultados/seguimiento.xlsx                           -> drive
+    Revision Legalizacion ...                             -> Leg_Wn
+    Hoja sin título (Subtareas)                           -> AB / AJ
+    (ZOOM y DETALLE_TICKETS se calculan)
 
-Ya no se lee el SEGUIMIENTO PREVISIONES.xlsx original.
+Si no hay archivo anterior, genera PREVISIONES desde cero SIN fórmulas.
 
 Uso:
     python automatizacion/fase5_previsiones.py
@@ -45,6 +45,7 @@ import openpyxl
 import xlsxwriter
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.formula import ArrayFormula
+from openpyxl.formula.translate import Translator
 
 HERE = Path(__file__).resolve().parent
 BASE_DIR = HERE.parent / "Nueva carpeta (2)"
@@ -58,7 +59,8 @@ def _arg_path(nombre: str, defecto: Path) -> Path:
     return defecto
 
 
-PLANTILLA = _arg_path("plantilla", BASE_DIR / "plantilla_previsiones.xlsx")
+ANTERIOR = _arg_path("anterior", BASE_DIR / "Seguimiento_Previsiones_Limpio_anterior.xlsx")
+HOJA = _arg_path("hoja", BASE_DIR / "Hoja de cálculo sin título.xlsx")
 JIRA = _arg_path("jira", BASE_DIR / "JIRA.xlsx")
 LEGAL = _arg_path("legal", BASE_DIR / "resultados" /
                   f"{date.today():%d%m%Y}_legal ministerio.xlsx")
@@ -69,6 +71,7 @@ DESTINO = _arg_path("out", BASE_DIR / "resultados" / "Seguimiento_Previsiones_Li
 sys.path.insert(0, str(HERE))
 import estilos_previsiones as est  # noqa: E402
 import data_in_headers as dih  # noqa: E402
+import previsiones_headers as ph  # noqa: E402
 
 # (campo, patrón editable, descripción)
 ESCENARIOS = [
@@ -116,23 +119,180 @@ def volcar(ws, fila: int, col: int, valor, fmt=None, fmt_fecha=None) -> None:
 
 
 # ----------------------------------------------------------------------
-# PREVISIONES JUAN (desde la plantilla)
+# PREVISIONES JUAN (base: archivo de la semana anterior)
 # ----------------------------------------------------------------------
-def escribir_previsiones(wb, ws_origen) -> None:
+MANUAL = {1: "ir", 8: "h", 28: "ab", 36: "aj"}
+
+
+def leer_anterior(path: Path):
+    """Devuelve (cabeceras, filas) de PREVISIONES JUAN del archivo anterior."""
+    if not path or not path.is_file():
+        return [], []
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=False)
+    if "PREVISIONES JUAN" not in wb.sheetnames:
+        wb.close()
+        return [], []
+    ws = wb["PREVISIONES JUAN"]
+    it = ws.iter_rows(values_only=True)
+    try:
+        hdr = list(next(it))
+    except StopIteration:
+        wb.close()
+        return [], []
+    filas = []
+    for fila in it:
+        fila = list(fila)
+        if len(fila) < 87:
+            fila += [None] * (87 - len(fila))
+        filas.append(fila[:87])
+    wb.close()
+    return hdr, filas
+
+
+def leer_jira_map() -> dict:
+    """IR -> datos de JIRA necesarios para H, AJ y DETALLE."""
+    wb = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
+    ws = wb["IR_VDF"]
+    hdr = list(next(ws.iter_rows(min_row=4, max_row=4, values_only=True)))
+    idx = {h: i for i, h in enumerate(hdr) if h}
+
+    def val(fila, nombre):
+        i = idx.get(nombre)
+        return fila[i] if i is not None and i < len(fila) else None
+
+    datos = {}
+    for fila in ws.iter_rows(min_row=5, values_only=True):
+        clave = val(fila, "Clave")
+        if clave in (None, ""):
+            continue
+        datos[str(clave).strip()] = {
+            "e": val(fila, "Proyecto & Subproyecto"),
+            "g": val(fila, "Proyectos Radio"),
+            "at": val(fila, "OSP Tecnología IR"),
+            "t": val(fila, "Fecha PO"),
+            "av": val(fila, "Prevision RFOA"),
+            "au": val(fila, "Real RFOA"),
+            "estado": val(fila, "Estado"),
+        }
+    wb.close()
+    return datos
+
+
+def leer_subtareas():
+    """Dos mapas IR -> valor: Tx Single RAN y ACTIVACION OR."""
+    wb = openpyxl.load_workbook(HOJA, read_only=True, data_only=True)
+    if "Subtareas" not in wb.sheetnames:
+        wb.close()
+        raise RuntimeError("No existe la hoja Subtareas en Hoja sin título.")
+    ws = wb["Subtareas"]
+    tx, act = {}, {}
+    for fila in ws.iter_rows(min_row=2, values_only=True):
+        ir = str(fila[1] or "").strip()
+        tipo = str(fila[6] or "").strip()
+        valor = fila[5]
+        if not ir:
+            continue
+        if tipo == "Tx Single RAN" and ir not in tx:
+            tx[ir] = valor
+        elif tipo == "ACTIVACION OR" and ir not in act:
+            act[ir] = valor
+    wb.close()
+    return tx, act
+
+
+def construir_irs(previas, drive_rows) -> list:
+    prev = [str(f[0]).strip() for f in previas if f and f[0] not in (None, "")]
+    drive_irs = [str(f[0]).strip() for f in drive_rows if f and f[0] not in (None, "")]
+    nuevos = []
+    if prev:
+        idx = None
+        if prev[-1] in drive_irs:
+            idx = drive_irs.index(prev[-1])
+        else:
+            for ir in reversed(prev):
+                if ir in drive_irs:
+                    idx = drive_irs.index(ir)
+                    break
+        if idx is not None:
+            for ir in drive_irs[idx + 1:]:
+                if ir and ir not in prev and ir not in nuevos:
+                    nuevos.append(ir)
+    else:
+        nuevos = list(dict.fromkeys(drive_irs))
+    return prev + nuevos
+
+
+def calcular_manual(ir: str, jmap: dict, tx: dict, act: dict):
+    d = jmap.get(ir, {})
+    e = str(d.get("e") or "")
+    g = str(d.get("g") or "")
+    nombres = []
+    for campo, patron, nombre, _ in ESCENARIOS:
+        texto = g if campo == "G" else e
+        if _coincide(patron, texto) and nombre not in nombres:
+            nombres.append(nombre)
+    h = " + ".join(nombres) if nombres else e
+
+    ab = tx.get(ir, "Sin IR")
+    at = str(d.get("at") or "").strip()
+    if at in ("", "-", "N/A", "n/a"):
+        aj = "N/A"
+    else:
+        aj = act.get(ir, "Sin IR")
+    return h, ab, aj
+
+
+def escribir_previsiones(wb, headers, previas, irs, calc) -> None:
     ws = wb.add_worksheet("PREVISIONES JUAN")
     for col, ancho in est.ANCHOS.items():
         ws.set_column(col - 1, col - 1, ancho)
     ws.set_row(0, est.ALTO_FILA1)
     ws.freeze_panes(*est.FREEZE)
-
     cab, dat = est.crear_formatos(wb)
-    filas = 0
-    with FormulasNormales():
-        for r, fila in enumerate(ws_origen.iter_rows(values_only=True)):
-            for c, valor in enumerate(fila, start=1):
-                fmt = cab.get(c) if r == 0 else dat.get(c)
-                volcar(ws, r, c - 1, valor, fmt)
-            filas = r + 1
+
+    hdr = list(headers) if len(headers) >= 87 else list(ph.HEADERS)
+    for c, h in enumerate(hdr[:87], start=1):
+        if h not in (None, ""):
+            ws.write_string(0, c - 1, str(h), cab.get(c))
+
+    last_row = len(previas) + 1  # fila Excel de la última fila anterior
+    plantillas = {}
+    if previas:
+        ultima = previas[-1]
+        for c in range(1, 88):
+            v = ultima[c - 1] if c - 1 < len(ultima) else None
+            if isinstance(v, ArrayFormula) or (isinstance(v, str) and v.startswith("=")):
+                plantillas[c] = v
+
+    filas = 1
+    for i, ir in enumerate(irs, start=2):
+        src = previas[i - 2] if i - 2 < len(previas) else None
+        for c in range(1, 88):
+            fmt = dat.get(c)
+            if c == 1:
+                ws.write_string(i - 1, 0, ir, fmt)
+            elif c in MANUAL:
+                h, ab, aj = calc.get(ir, ("", "Sin IR", "N/A"))
+                valor = {"h": h, "ab": ab, "aj": aj}[MANUAL[c]]
+                volcar(ws, i - 1, c - 1, valor, fmt)
+            elif src is not None:
+                v = src[c - 1] if c - 1 < len(src) else None
+                if v != "AUTO":
+                    volcar(ws, i - 1, c - 1, v, fmt)
+            elif c in plantillas:
+                v = plantillas[c]
+                txt = v.text if isinstance(v, ArrayFormula) else v
+                col = get_column_letter(c)
+                try:
+                    txt = Translator(txt, origin=f"{col}{last_row}").translate_formula(
+                        f"{col}{i}")
+                except Exception:
+                    pass
+                if isinstance(v, ArrayFormula):
+                    ws.write_array_formula(i - 1, c - 1, i - 1, c - 1, txt, fmt)
+                else:
+                    ws.write_formula(i - 1, c - 1, txt, fmt)
+        filas += 1
 
     verde = wb.add_format({"bg_color": "#92D050"})
     rojo = wb.add_format({"bg_color": "#FF0000"})
@@ -147,11 +307,13 @@ def escribir_previsiones(wb, ws_origen) -> None:
                 "criteria": f'=$N{ref}="{texto}"',
                 "format": fmt,
             })
-    print(f"    PREVISIONES JUAN: {filas:,} filas (plantilla)")
+    nuevas = max(0, len(irs) - len(previas))
+    print(f"    PREVISIONES JUAN: {len(irs):,} filas "
+          f"({len(previas):,} leídas del anterior + {nuevas:,} nuevas)")
 
 
 # ----------------------------------------------------------------------
-# DATA IN: cabeceras de plantilla + datos de JIRA
+# DATA IN: cabeceras del modulo + datos de JIRA
 # ----------------------------------------------------------------------
 def escribir_data_in(wb, ws_jira, fmt_fecha, fmt_cab) -> None:
     ws = wb.add_worksheet("DATA IN")
@@ -213,14 +375,22 @@ def escribir_legal(wb, nombre: str, ws_origen, etiqueta: str,
 DRIVE_COLS = [2, 29, 74, 129]  # B, AC, BV, DY (1-based)
 
 
-def escribir_drive(wb, ws_origen, fmt_fecha, fmt_cab) -> None:
+def leer_drive(ws_origen):
+    it = ws_origen.iter_rows(values_only=True)
+    hdr = next(it)
+    filas = []
+    for fila in it:
+        filas.append(tuple(fila[c - 1] if c - 1 < len(fila) else None
+                           for c in DRIVE_COLS))
+    return hdr, filas
+
+
+def escribir_drive(wb, hdr, filas, fmt_fecha, fmt_cab) -> None:
     ws = wb.add_worksheet("drive")
     ws.set_column(0, 0, 14)
     ws.set_column(1, 2, 22)
     ws.set_column(3, 3, 10)
 
-    it = ws_origen.iter_rows(values_only=True)
-    hdr = next(it)
     for j, c in enumerate(DRIVE_COLS):
         if c - 1 < len(hdr) and hdr[c - 1] not in (None, ""):
             ws.write_string(0, j, str(hdr[c - 1]), fmt_cab)
@@ -229,13 +399,10 @@ def escribir_drive(wb, ws_origen, fmt_fecha, fmt_cab) -> None:
     ws.write_string(1, 2, "Fecha", fmt_cab)
     ws.write_string(1, 3, "N/A", fmt_cab)
 
-    r = 2
-    for fila in it:
-        for j, c in enumerate(DRIVE_COLS):
-            valor = fila[c - 1] if c - 1 < len(fila) else None
+    for r, fila in enumerate(filas, start=2):
+        for j, valor in enumerate(fila):
             volcar(ws, r, j, valor, None, fmt_fecha)
-        r += 1
-    print(f"    drive: {r - 2:,} filas")
+    print(f"    drive: {len(filas):,} filas")
 
 
 # ----------------------------------------------------------------------
@@ -405,12 +572,16 @@ def escribir_zoom(wb) -> None:
 # ----------------------------------------------------------------------
 # DETALLE_TICKETS (hoja oculta de drill-down)
 # ----------------------------------------------------------------------
-def _semana_txt(av, lunes: date) -> str:
+def _semana_txt(av, au, lunes: date) -> str:
     if isinstance(av, datetime):
         av = av.date()
+    if isinstance(au, datetime):
+        au = au.date()
     if not isinstance(av, date):
         return "Sin previsión"
     if av < lunes:
+        if not isinstance(au, date):
+            return "Sin previsión"
         return "Pasada"
     if av > lunes + timedelta(days=34):
         return "> 5 sem"
@@ -418,52 +589,40 @@ def _semana_txt(av, lunes: date) -> str:
     return f"W{iso[1]:02d}_{iso[0]}"
 
 
-def escribir_detalle(wb, ws_jira, fmt_fecha, fmt_cab) -> None:
+def escribir_detalle(wb, jmap: dict, fmt_fecha, fmt_cab) -> None:
     ws = wb.add_worksheet("DETALLE_TICKETS")
     titulos = ["Escenario", "IR", "Semana previsión", "Estado", "Fecha PO",
                "Previsión RFOA", "Fecha RFOA", "Proyectos Radio",
                "Proyecto & Subproyecto"]
     for c, t in enumerate(titulos):
         ws.write_string(0, c, t, fmt_cab)
-    ws.set_column(0, 0, 22)
+    ws.set_column(0, 0, 42)
     ws.set_column(1, 1, 14)
-    ws.set_column(2, 2, 14)
+    ws.set_column(2, 2, 16)
     ws.set_column(3, 3, 20)
     ws.set_column(4, 6, 14)
     ws.set_column(7, 8, 45)
+    ws.freeze_panes(1, 0)
 
-    hdr = list(next(ws_jira.iter_rows(min_row=4, max_row=4, values_only=True)))
-    idx = {h: i for i, h in enumerate(hdr) if h}
     lunes = date.today() - timedelta(days=date.today().weekday())
-
-    def val(fila, nombre):
-        i = idx.get(nombre)
-        return fila[i] if i is not None and i < len(fila) else None
-
     r = 1
-    for fila in ws_jira.iter_rows(min_row=5, values_only=True):
-        t = val(fila, "Fecha PO")
+    for ir, d in jmap.items():
+        t = d.get("t")
         if not isinstance(t, (date, datetime)):
             continue
-        g = val(fila, "Proyectos Radio")
-        e = val(fila, "Proyecto & Subproyecto")
+        g = str(d.get("g") or "")
+        e = str(d.get("e") or "")
+        nombres = []
         for campo, patron, nombre, _ in ESCENARIOS:
             texto = g if campo == "G" else e
-            if not _coincide(patron, texto):
-                continue
-            av = val(fila, "Prevision RFOA")
-            datos = [nombre, val(fila, "Clave"), _semana_txt(av, lunes),
-                     val(fila, "Estado"), t, av, val(fila, "Real RFOA"),
-                     g, e]
-            for c, v in enumerate(datos):
-                if c in (2, 4, 5, 6):
-                    volcar(ws, r, c, v, None, fmt_fecha)
-                else:
-                    volcar(ws, r, c, v, None, fmt_fecha)
-            r += 1
-    ws.hide()
-    print(f"    DETALLE_TICKETS: {r - 1:,} filas (oculta)")
-
+            if _coincide(patron, texto) and nombre not in nombres:
+                nombres.append(nombre)
+        datos = [" + ".join(nombres), ir, _semana_txt(d.get("av"), d.get("au"), lunes),
+                 d.get("estado"), t, d.get("av"), d.get("au"), g, e]
+        for c, v in enumerate(datos):
+            volcar(ws, r, c, v, None, fmt_fecha)
+        r += 1
+    print(f"    DETALLE_TICKETS: {r - 1:,} filas")
 
 
 # ----------------------------------------------------------------------
@@ -475,19 +634,35 @@ def main() -> None:
     print("  FASE 5 · Generando Seguimiento_Previsiones_Limpio.xlsx")
     print("=" * 70)
 
-    faltan = [p for p in (PLANTILLA, JIRA, LEGAL, SEGUIMIENTO, REVISION) if not p.is_file()]
+    requeridos = [JIRA, LEGAL, SEGUIMIENTO, REVISION, HOJA]
+    faltan = [p for p in requeridos if not p.is_file()]
     if faltan:
         for p in faltan:
             print("  Falta:", p)
         sys.exit("No se puede generar: faltan archivos de entrada.")
 
-    print("[1] Abriendo plantilla y fuentes...")
-    wb_plantilla = openpyxl.load_workbook(PLANTILLA, read_only=True, data_only=False)
+    print("[1] Leyendo fuentes...")
+    jmap = leer_jira_map()
+    print(f"    JIRA: {len(jmap):,} IRs")
+    headers, previas = leer_anterior(ANTERIOR)
+    if previas:
+        print(f"    Anterior: {len(previas):,} filas de {ANTERIOR.name}")
+    else:
+        print("    [AVISO] Sin archivo anterior: se genera desde cero, SIN heredar fórmulas.")
+        headers = list(ph.HEADERS)
+    tx, act = leer_subtareas()
+    print(f"    Subtareas: Tx Single RAN={len(tx):,} | ACTIVACION OR={len(act):,}")
+
     wb_jira = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
-    wb_detalle = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
     wb_legal = openpyxl.load_workbook(LEGAL, read_only=True, data_only=True)
     wb_seg = openpyxl.load_workbook(SEGUIMIENTO, read_only=True, data_only=True)
     wb_rev = openpyxl.load_workbook(REVISION, read_only=True, data_only=True)
+
+    drive_hdr, drive_rows = leer_drive(wb_seg["NUEVO SEGUIMIENTO"])
+    irs = construir_irs(previas, drive_rows)
+    print(f"    IRs: {len(previas):,} anteriores + "
+          f"{len(irs) - len(previas):,} nuevos = {len(irs):,}")
+    calc = {ir: calcular_manual(ir, jmap, tx, act) for ir in irs}
 
     print("[2] Escribiendo...")
     wb = xlsxwriter.Workbook(str(DESTINO), {"constant_memory": True,
@@ -499,20 +674,21 @@ def main() -> None:
     escribir_data_in(wb, wb_jira["IR_VDF"], fmt_fecha, fmt_cab)
     escribir_legal(wb, "LEGAL OSP", wb_legal["legal_osp"], "OSP", fmt_fecha, fmt_cab)
     escribir_legal(wb, "LEGAL VDF", wb_legal["legal_vdf"], "VDF", fmt_fecha, fmt_cab)
-    escribir_previsiones(wb, wb_plantilla["PREVISIONES JUAN"])
+    escribir_previsiones(wb, headers, previas, irs, calc)
     escribir_zoom(wb)
-    escribir_detalle(wb, wb_detalle["IR_VDF"], fmt_fecha, fmt_cab)
-    escribir_drive(wb, wb_seg["NUEVO SEGUIMIENTO"], fmt_fecha, fmt_cab)
+    escribir_detalle(wb, jmap, fmt_fecha, fmt_cab)
+    escribir_drive(wb, drive_hdr, drive_rows, fmt_fecha, fmt_cab)
     escribir_leg_wn(wb, wb_rev["Detalle"], fmt_fecha, fmt_cab)
 
     wb.close()
-    for w in (wb_plantilla, wb_jira, wb_detalle, wb_legal, wb_seg, wb_rev):
+    for w in (wb_jira, wb_legal, wb_seg, wb_rev):
         w.close()
 
     tam = DESTINO.stat().st_size / 1e6
     print("\n" + "=" * 70)
     print(f"  [OK] {DESTINO.name} ({tam:.1f} MB) en {time.time() - t0:.1f}s")
-    print("       DATA IN · LEGAL OSP · LEGAL VDF · PREVISIONES JUAN · ZOOM · drive · Leg_Wn")
+    print("       DATA IN · LEGAL OSP · LEGAL VDF · PREVISIONES JUAN · ZOOM · "
+          "DETALLE_TICKETS · drive · Leg_Wn")
     print("=" * 70)
 
 

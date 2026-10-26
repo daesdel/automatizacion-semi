@@ -30,7 +30,8 @@ semi/
 │   ├── main.py
 │   ├── app_streamlit.py
 │   ├── fase5_previsiones.py
-│   ├── crear_plantilla.py           # extrae la plantilla (una vez)
+│   ├── data_in_headers.py           # cabeceras e índice de DATA IN
+│   ├── previsiones_headers.py       # 87 cabeceras de PREVISIONES JUAN
 │   └── estilos_previsiones.py       # especificación de formatos
 ├── subidas/                        # solo mientras corre la app (se vacía)
 └── Nueva carpeta (2)/
@@ -38,8 +39,7 @@ semi/
     ├── JIRA con DR.xlsx
     ├── Hoja de cálculo sin título.xlsx
     ├── MinisterioPowerBi.csv
-    ├── plantilla_previsiones.xlsx            # plantilla Fase 5
-    ├── Seguimiento_Previsiones_Limpio.xlsx   # salida Fase 5
+    ├── Seguimiento_Previsiones_Limpio.xlsx   # base (semana anterior) y salida
     └── resultados/
         ├── seguimiento.xlsx
         └── DDMMYYYY_legal ministerio.xlsx
@@ -208,11 +208,11 @@ python automatizacion/fase2_legal.py [--csv=RUTA] [--out=CARPETA]
 
 Ejecuta Fase 1, Fase 2 y Fase 5 en cadena:
 
-1. **Preflight**: comprueba los archivos de entrada (incluida la plantilla y
-   la Revision) y los scripts; si falta algo, no ejecuta nada.
+1. **Preflight**: comprueba los archivos de entrada (base, legal, seguimiento,
+   Revision y Hoja sin título) y los scripts; si falta algo, no ejecuta nada.
 2. **Fase 1** con `--refresh` y rutas explícitas (genera `JIRA.xlsx`).
 3. **Fase 2** con el CSV.
-4. **Fase 5** con la plantilla, `JIRA.xlsx`, el legal fechado y
+4. **Fase 5** con el archivo anterior (opcional), `JIRA.xlsx`, el legal fechado y
    `seguimiento.xlsx`.
 5. **Resumen**: tiempos por fase, total y tres archivos generados.
 
@@ -237,11 +237,17 @@ Tiempo de referencia: **≈60 s** (10 s + 8 s + 41 s en Mac).
 
 1. **Carpeta local (recomendado en Windows)**: campo de texto con la ruta
    (p. ej. `C:\Users\describa\Downloads\Nueva carpeta (2)`). La app lee los
-   5 archivos de ahí y escribe `resultados_app/` en la misma carpeta; no sube
-   nada ni usa `subidas/`.
-2. **Subida**: cinco `st.file_uploader` (Seguimiento, JIRA con DR, Hoja sin
-   título, CSV del Ministerio y `plantilla_previsiones.xlsx`). Se guardan en
-   `subidas/` con nombres limpios y se borran al terminar.
+   4 archivos base de ahí y escribe `resultados_app/` en la misma carpeta; no
+   sube nada ni usa `subidas/`.
+2. **Subida**: cuatro `st.file_uploader` obligatorios (Seguimiento, JIRA con
+   DR, Hoja sin título y CSV del Ministerio).
+
+En modo carpeta se autodetecta `Seguimiento_Previsiones_Limpio.xlsx` en esa
+ruta, y hay un campo extra para indicar otra ubicación. Se puede aportar
+opcionalmente el
+`Seguimiento_Previsiones_Limpio.xlsx` de la **semana anterior** para heredar
+las fórmulas de PREVISIONES JUAN. Si no se aporta, se genera desde cero
+**sin fórmulas** y se avisa en la interfaz.
 
 En ambos modos:
 
@@ -280,17 +286,18 @@ Navegador: <http://localhost:8501>
 
 ## 6. Fase 5 — Archivo limpio (`Seguimiento_Previsiones_Limpio.xlsx`)
 
-### 6.1 Arquitectura de plantilla (sin dependencia del original)
+### 6.1 Arquitectura (sin plantilla)
 
-La Fase 5 ya **no lee** `SEGUIMIENTO PREVISIONES.xlsx`. Se apoya en:
+La Fase 5 ya **no usa plantilla ni el libro original**. Usa como base el
+`Seguimiento_Previsiones_Limpio.xlsx` de la **semana anterior**:
 
 | Pieza | Papel |
 |---|---|
-| `plantilla_previsiones.xlsx` | **Solo** `PREVISIONES JUAN`: cabeceras, fórmulas, columnas manuales (A, H, AB, AJ) y celdas `AUTO` donde no hay fórmula |
-| `crear_plantilla.py` | Genera la plantilla **una sola vez** desde el libro original |
+| Archivo anterior | `PREVISIONES JUAN` con sus fórmulas y filas; se heredan y se añaden IRs nuevos |
 | `data_in_headers.py` | Cabeceras (205 con nombre + 56 vacías) e índice 1…261 de `DATA IN` |
+| `previsiones_headers.py` | 87 cabeceras de PREVISIONES JUAN (para arranque desde cero) |
 | `estilos_previsiones.py` | Especificación estática de fuentes, rellenos, bordes, anchos, alto y freeze |
-| `fase5_previsiones.py` | Inyecta los datos de Fase 1/2 y genera el libro final |
+| `fase5_previsiones.py` | Calcula A/H/AB/AJ, hereda fórmulas y genera el libro final |
 
 Origen de cada hoja del libro final:
 
@@ -298,18 +305,22 @@ Origen de cada hoja del libro final:
 |---|---|
 | `DATA IN` | `data_in_headers.py` + datos de `JIRA.xlsx` (`IR_VDF`, desde fila 5) |
 | `LEGAL VDF` / `LEGAL OSP` | `resultados/DDMMYYYY_legal ministerio.xlsx` (hojas `legal_vdf` / `legal_osp`) |
-| `PREVISIONES JUAN` | Plantilla (fórmulas + manuales; las celdas `AUTO` se dejan vacías) |
+| `PREVISIONES JUAN` | Archivo anterior (filas + fórmulas) + IRs nuevos de `drive` + A/H/AB/AJ calculadas |
 | `drive` | `resultados/seguimiento.xlsx` columnas B, AC, BV, DY |
 | `Leg_Wn` | `Revision Legalizacion SEMI SemN.xlsx` → `Detalle` (A:I, M, V:Z) |
 | `ZOOM` | Se calcula con `COUNTIFS` |
-| `DETALLE_TICKETS` | Hoja **oculta** de drill-down generada desde `JIRA.xlsx` |
+| `DETALLE_TICKETS` | Drill-down **visible**, una fila por IR, generado desde `JIRA.xlsx` |
 
-### 6.2 Arreglo de ArrayFormula
+### 6.2 Fórmulas heredadas y ArrayFormula
+
+Las fórmulas se copian del archivo anterior. Para las **filas nuevas** se toma
+la fórmula de la última fila existente y se traslada con
+`openpyxl.formula.translate.Translator`, ajustando referencias relativas.
 
 En la columna **AL** (“Datos Radio Enviados”) hay **3.775 fórmulas
 matriciales** (`<f t="array" ref="AL2">`). openpyxl las devuelve como objetos
-`ArrayFormula`, no como texto; al escribirlas con `str()` aparecía
-`<openpyxl...ArrayFormula object at 0x...>`.
+`ArrayFormula`, no como texto; se escribe su `.text` con
+`write_array_formula`.
 
 Solución aplicada:
 
@@ -322,9 +333,10 @@ Además, xlsxwriter convertía automáticamente `XLOOKUP`/`SWITCH` en matriciale
 (45.000 celdas). Se neutraliza con `FormulasNormales`, de modo que **solo las
 3.775 celdas de AL** quedan como matriciales y el resto son fórmulas normales.
 
-### 6.3 Formato clonado
+### 6.3 Formato
 
-La plantilla arrastra el formato exacto del original:
+El formato se aplica desde `estilos_previsiones.py` (extraído una vez del
+libro original):
 
 - Cabecera con sus 19 variantes de relleno/fuente (rojo, amarillo, naranja,
   azul, morado…), bordes finos/medios y alto de fila 45,75.
@@ -370,14 +382,32 @@ La plantilla arrastra el formato exacto del original:
 > anterior venía de `ISOWEEKNUM`; se sustituyó por `WEEKNUM(fecha,21)`, que es
 > nativo y funciona en Excel ES (se ve como `NUM.DE.SEMANA`).
 
-### 6.5 Generación
+### 6.5 Columnas manuales y DETALLE_TICKETS
+
+- **A (IR)**: IRs del archivo anterior + los que aparecen en `drive` después
+  del último IR anterior localizado (si el último ya no está, se busca hacia
+  atrás el último presente).
+- **H (Clasificación)**: si el ticket encaja en uno o varios de los 6
+  escenarios, se concatenan sus nombres con ` + `; si no encaja en ninguno,
+  se escribe `Proyecto & Subproyecto`.
+- **AB (IR-Tx)**: `Subtareas` de `Hoja sin título`: filas con
+  `Subtareas.issueType = "Tx Single RAN"` y misma clave; se toma
+  `Subtareas.issueKey`. Si no hay, `Sin IR`.
+- **AJ (IR-Activación)**: si `OSP Tecnología IR` está vacío/`-`/`N/A`, `N/A`.
+  Si hay tecnologías, se busca `ACTIVACION OR` en `Subtareas` y se toma
+  `Subtareas.issueKey`; si no hay, `Sin IR`.
+
+`DETALLE_TICKETS` es **visible**, con **una fila por IR** y los escenarios
+concatenados con ` + `. La semana de previsión muestra `Sin previsión` cuando
+AV está vacía, o cuando AV es pasada y **no** hay Fecha RFOA real (AU); si AU
+existe, muestra `Pasada`.
+
+### 6.6 Generación
 
 ```bash
-# una sola vez (ya generada)
-python automatizacion/crear_plantilla.py
-
 # cada actualización
-python automatizacion/fase5_previsiones.py
+python automatizacion/fase5_previsiones.py [--anterior=RUTA]
+# sin --anterior (o si no existe) se genera desde cero, sin fórmulas
 ```
 
 Salida: `Nueva carpeta (2)/resultados/Seguimiento_Previsiones_Limpio.xlsx` (~15,5 MB).
@@ -408,16 +438,17 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   limpieza de salidas parciales).
 - Fase 4: prueba end-to-end con los 4 archivos reales (45,9 s), descargas
   disponibles y `subidas/` vacía al terminar.
-- Fase 5: generación probada en Mac (39,9 s, 15,1 MB), plantilla de 4,9 MB,
-  3.775 únicas fórmulas matriciales en AL y 21 reglas de formato condicional.
-- Pipeline completo Fases 1+2+5: 65,69 s (9,96 + 7,85 + 47,89) y tres
+- Fase 5: generación desde el archivo anterior probada en Mac; A/H/AB/AJ
+  calculadas, fórmulas heredadas, DETALLE_TICKETS visible y 21 reglas de
+  formato condicional.
+- Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
-- Streamlit en modo carpeta local: 134,0 s, 3 descargas (la del legal con su
-  nombre fechado), sin errores.
-- ZOOM: cabeceras `WXX_AAAA` con `WEEKNUM(...,21)`, columna `> 5 sem`,
-  exclusión de ejecutadas antes y hoja oculta `DETALLE_TICKETS` (9.388 filas).
-- Plantilla: solo `PREVISIONES JUAN` (sin `DATA IN`).
-- Git: repositorio inicializado, commit `0d2b14c`, solo 9 archivos versionados.
+- Streamlit en modo carpeta local con archivo anterior: 137,8 s, 3 descargas,
+  sin errores.
+- ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
+- DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
+- Sin plantilla: PREVISIONES se hereda del archivo de la semana anterior.
+- Git: repositorio actualizado; ver el último commit en `git log`.
 
 ---
 
@@ -457,7 +488,7 @@ Notas:
 
 - Si GitHub pide contraseña, usa un **Personal Access Token** como contraseña
   (o `gh auth login` si tienes GitHub CLI).
-- La plantilla `plantilla_previsiones.xlsx` y los datos **no** se suben
+- Los Excel/CSV (incluido el archivo anterior y la salida) **no** se suben
   (excluidos por `.gitignore`); cópialos aparte o guárdalos en OneDrive.
 - Para actualizar el repo tras cambios:
 

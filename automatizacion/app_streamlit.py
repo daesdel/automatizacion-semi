@@ -43,7 +43,7 @@ NOMBRES_LIMPIOS = {
     "JIRA con DR.xlsx": "jira.xlsx",
     "Hoja de cálculo sin título.xlsx": "hoja.xlsx",
     "MinisterioPowerBi.csv": "ministerio.csv",
-    "plantilla_previsiones.xlsx": "plantilla.xlsx",
+    "Seguimiento_Previsiones_Limpio_anterior.xlsx": "anterior.xlsx",
 }
 
 ARCHIVOS_CARPETA = [
@@ -51,7 +51,6 @@ ARCHIVOS_CARPETA = [
     "JIRA con DR.xlsx",
     "Hoja de cálculo sin título.xlsx",
     "MinisterioPowerBi.csv",
-    "plantilla_previsiones.xlsx",
 ]
 REVISION = "Revision Legalizacion SEMI SemN.xlsx"
 
@@ -62,7 +61,9 @@ st.title("📊 Automatización de Informes SEMI")
 st.write(
     "Puedes indicar una **carpeta local** con los archivos (recomendado en "
     "Windows, evita subir ~100 MB) o subirlos aquí. Se ejecutarán las "
-    "**Fases 1, 2 y 5** y se generarán los tres informes."
+    "**Fases 1, 2 y 5**. Opcionalmente, aporta el "
+    "`Seguimiento_Previsiones_Limpio.xlsx` de la semana anterior para heredar "
+    "las fórmulas de PREVISIONES JUAN."
 )
 
 
@@ -205,6 +206,14 @@ ruta_texto = st.text_input(
 
 ruta = Path(ruta_texto.strip()).expanduser() if ruta_texto.strip() else None
 modo_ruta = ruta is not None
+anterior_txt = st.text_input(
+    "Archivo anterior Seguimiento_Previsiones_Limpio.xlsx (opcional)",
+    placeholder=r"C:\...\Seguimiento_Previsiones_Limpio.xlsx",
+    help="Si no se indica, se generará desde cero SIN heredar fórmulas.",
+)
+anterior_path = Path(anterior_txt.strip()).expanduser() if anterior_txt.strip() else None
+revision_local = None
+anterior_local = None
 faltan_carpeta: list = []
 revision_local = None
 
@@ -216,10 +225,17 @@ if modo_ruta:
         faltan_carpeta = [n for n in ARCHIVOS_CARPETA if not (ruta / n).is_file()]
         rev = ruta / REVISION
         revision_local = rev if rev.is_file() else None
+        if anterior_path and anterior_path.is_file():
+            anterior_local = anterior_path
+        elif (ruta / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+            anterior_local = ruta / "Seguimiento_Previsiones_Limpio.xlsx"
+        if anterior_local is None:
+            st.warning("Sin archivo anterior: PREVISIONES se generará desde cero, "
+                       "sin heredar fórmulas.")
         if faltan_carpeta:
             st.error("Faltan en la carpeta: " + ", ".join(faltan_carpeta))
         else:
-            st.success(f"5 archivos encontrados en `{ruta}`")
+            st.success(f"Archivos base encontrados en `{ruta}`")
         if revision_local is None:
             st.warning(
                 f"No se encontró `{REVISION}`; se usará la de la carpeta del proyecto."
@@ -230,8 +246,9 @@ else:
     with col1:
         up_seg = st.file_uploader("Seguimiento E2E VODAFONE.xlsx", type=["xlsx"], key="seg")
         up_jira = st.file_uploader("JIRA con DR.xlsx", type=["xlsx"], key="jira")
-        up_plantilla = st.file_uploader("plantilla_previsiones.xlsx", type=["xlsx"],
-                                        key="plantilla")
+        up_anterior = st.file_uploader(
+            "Seguimiento_Previsiones_Limpio.xlsx (semana anterior, opcional)",
+            type=["xlsx"], key="anterior")
     with col2:
         up_hoja = st.file_uploader("Hoja de cálculo sin título.xlsx", type=["xlsx"],
                                    key="hoja")
@@ -242,9 +259,10 @@ else:
         "JIRA con DR.xlsx": up_jira,
         "Hoja de cálculo sin título.xlsx": up_hoja,
         "MinisterioPowerBi.csv": up_csv,
-        "plantilla_previsiones.xlsx": up_plantilla,
+        "Seguimiento_Previsiones_Limpio_anterior.xlsx": up_anterior,
     }
-    faltan_subida = [n for n, f in subidos.items() if f is None]
+    faltan_subida = [n for n, f in subidos.items()
+                     if f is None and "anterior" not in n]
     if faltan_subida:
         st.info("Faltan por subir: " + ", ".join(faltan_subida))
     else:
@@ -278,10 +296,11 @@ if pulsado:
                 f"--jira={ruta / 'JIRA con DR.xlsx'}",
                 f"--hoja={ruta / 'Hoja de cálculo sin título.xlsx'}",
                 f"--csv={ruta / 'MinisterioPowerBi.csv'}",
-                f"--plantilla={ruta / 'plantilla_previsiones.xlsx'}",
                 f"--jira-out={carpeta_salida / 'JIRA.xlsx'}",
                 f"--out={carpeta_salida}",
             ]
+            if anterior_local is not None:
+                cmd.append(f"--anterior={anterior_local}")
             if revision_local is not None:
                 cmd.append(f"--revision={revision_local}")
         else:
@@ -293,6 +312,8 @@ if pulsado:
             limpiar = True
             rutas = {}
             for etiqueta, archivo in subidos.items():
+                if archivo is None:
+                    continue
                 destino = SUBIDAS / NOMBRES_LIMPIOS[etiqueta]
                 destino.write_bytes(archivo.getvalue())
                 rutas[etiqueta] = destino
@@ -303,10 +324,11 @@ if pulsado:
                 f"--jira={rutas['JIRA con DR.xlsx']}",
                 f"--hoja={rutas['Hoja de cálculo sin título.xlsx']}",
                 f"--csv={rutas['MinisterioPowerBi.csv']}",
-                f"--plantilla={rutas['plantilla_previsiones.xlsx']}",
                 f"--jira-out={SALIDA / 'JIRA.xlsx'}",
                 f"--out={SALIDA}",
             ]
+            if up_anterior is not None:
+                cmd.append(f"--anterior={rutas['Seguimiento_Previsiones_Limpio_anterior.xlsx']}")
 
         t0 = time.time()
         log = ejecutar_con_progreso(cmd, timeout=3600)

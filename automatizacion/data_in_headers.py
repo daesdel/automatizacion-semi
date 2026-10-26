@@ -1,4 +1,4 @@
-# Cabeceras e indice de DATA IN (generado una vez desde la plantilla).
+# Cabeceras e indice de DATA IN (generado una vez desde el libro original).
 
 HEADERS = ['Clave',
  'Resumen',

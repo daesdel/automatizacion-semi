@@ -55,7 +55,7 @@ FASE2 = HERE / "fase2_legal.py"
 FASE5 = HERE / "fase5_previsiones.py"
 
 JIRA_EXPORT = _arg_path("jira-out", DATA / "JIRA.xlsx")
-PLANTILLA = _arg_path("plantilla", DATA / "plantilla_previsiones.xlsx")
+ANTERIOR = _arg_path("anterior", DATA / "Seguimiento_Previsiones_Limpio.xlsx")
 REVISION = _arg_path("revision", DATA / "Revision Legalizacion SEMI SemN.xlsx")
 
 ENTRADAS = {
@@ -63,7 +63,6 @@ ENTRADAS = {
     "JIRA con DR": _arg_path("jira", DATA / "JIRA con DR.xlsx"),
     "Hoja sin título": _arg_path("hoja", DATA / "Hoja de cálculo sin título.xlsx"),
     "CSV Ministerio": _arg_path("csv", DATA / "MinisterioPowerBi.csv"),
-    "Plantilla previsiones": PLANTILLA,
     "Revision legalizacion": REVISION,
 }
 
@@ -202,13 +201,15 @@ def main() -> int:
         f"--out={OUT_DIR}",
     ]
     args5 = [
-        f"--plantilla={PLANTILLA}",
+        f"--hoja={ENTRADAS['Hoja sin título']}",
         f"--revision={REVISION}",
         f"--jira={JIRA_EXPORT}",
         f"--legal={SALIDAS['Fase 2 - Legal']}",
         f"--seguimiento={SALIDAS['Fase 1 - Seguimiento']}",
         f"--out={SALIDAS['Fase 5 - Previsiones']}",
     ]
+    if ANTERIOR.is_file():
+        args5.append(f"--anterior={ANTERIOR}")
 
     tiempos = {}
     try:
