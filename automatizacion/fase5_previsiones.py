@@ -432,26 +432,25 @@ def escribir_leg_wn(wb, ws_origen, fmt_fecha, fmt_cab) -> None:
 # ----------------------------------------------------------------------
 def _criterios_base(campo: str, f_patron: int) -> str:
     return (f"'PREVISIONES JUAN'!${campo}:${campo},$B${f_patron},"
-            f"'PREVISIONES JUAN'!$T:$T,\">0\"")
+            f"'PREVISIONES JUAN'!$T:$T,\">0\","
+            f"'PREVISIONES JUAN'!$N:$N,\"<>RIP\"")
 
 
 def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str) -> str:
     base = _criterios_base(campo, f_patron)
     rango = (f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_fechas},"
              f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_fechas}+6)")
-    total = f"COUNTIFS({base},{rango})"
-    hechas = (f"COUNTIFS({base},{rango},"
-              f"'PREVISIONES JUAN'!$AU:$AU,\"<\"&B{f_fechas})")
-    return f"={total}-{hechas}"
+    partes = [f"COUNTIFS({base},{rango},'PREVISIONES JUAN'!$AU:$AU,\"{au}\")"
+              for au in ("", "-")]
+    return "=" + "+".join(partes)
 
 
 def _f_mas5(campo: str, f_patron: int, f_fechas: int) -> str:
     base = _criterios_base(campo, f_patron)
     limite = f"F{f_fechas}+6"
-    total = f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite})"
-    hechas = (f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite},"
-              f"'PREVISIONES JUAN'!$AU:$AU,\"<\"&B{f_fechas})")
-    return f"={total}-{hechas}"
+    partes = [f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite},"
+              f"'PREVISIONES JUAN'!$AU:$AU,\"{au}\")" for au in ("", "-")]
+    return "=" + "+".join(partes)
 
 
 def _f_no_plan(campo: str, f_patron: int, f_inicio: int) -> str:
@@ -610,6 +609,10 @@ def escribir_detalle(wb, jmap: dict, fmt_fecha, fmt_cab) -> None:
         t = d.get("t")
         if not isinstance(t, (date, datetime)):
             continue
+        if isinstance(d.get("au"), (date, datetime)):
+            continue
+        if str(d.get("estado") or "").strip().upper() == "RIP":
+            continue
         g = str(d.get("g") or "")
         e = str(d.get("e") or "")
         nombres = []
@@ -623,6 +626,55 @@ def escribir_detalle(wb, jmap: dict, fmt_fecha, fmt_cab) -> None:
             volcar(ws, r, c, v, None, fmt_fecha)
         r += 1
     print(f"    DETALLE_TICKETS: {r - 1:,} filas")
+
+
+
+# ----------------------------------------------------------------------
+# Informe de cambios respecto al archivo anterior
+# ----------------------------------------------------------------------
+def escribir_informe(previas, irs, calc) -> None:
+    destino = DESTINO.parent / "Informe_Cambios.xlsx"
+    wb = xlsxwriter.Workbook(str(destino))
+    f_cab = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1})
+    f_txt = wb.add_format({"border": 1, "text_wrap": True, "valign": "top"})
+
+    anterior = {}
+    for fila in previas:
+        ir = str(fila[0]).strip() if fila and fila[0] else ""
+        if ir:
+            anterior[ir] = (fila[7], fila[27], fila[35])
+
+    cambios, actualizados, nuevos = [], [], []
+    for ir in irs:
+        h, ab, aj = calc.get(ir, ("", "Sin IR", "N/A"))
+        if ir not in anterior:
+            nuevos.append([ir, h, ab, aj])
+            continue
+        ah, aab, aaj = anterior[ir]
+        if str(ah or "") != str(h or ""):
+            cambios.append([ir, ah, h])
+        none = (None, "", "Sin IR")
+        if (aab in none and ab not in none) or (aaj in none and aj not in none):
+            actualizados.append([ir, aab, ab, aaj, aj])
+
+    def hoja(nombre, cabeceras, filas):
+        ws = wb.add_worksheet(nombre)
+        for c, t in enumerate(cabeceras):
+            ws.write_string(0, c, t, f_cab)
+        for r, fila in enumerate(filas, start=1):
+            for c, v in enumerate(fila):
+                ws.write_string(r, c, "" if v is None else str(v), f_txt)
+        for c in range(len(cabeceras)):
+            ws.set_column(c, c, 28)
+        return ws
+
+    hoja("ESCENARIO_CAMBIADO", ["IR", "H anterior", "H actual"], cambios)
+    hoja("IR_TX_AJ_ACTUALIZADO",
+         ["IR", "AB anterior", "AB actual", "AJ anterior", "AJ actual"], actualizados)
+    hoja("NUEVOS", ["IR", "H", "AB", "AJ"], nuevos)
+    wb.close()
+    print(f"    Informe_Cambios.xlsx: {len(cambios)} cambios H, "
+          f"{len(actualizados)} AB/AJ, {len(nuevos)} nuevos")
 
 
 # ----------------------------------------------------------------------
@@ -675,6 +727,7 @@ def main() -> None:
     escribir_legal(wb, "LEGAL OSP", wb_legal["legal_osp"], "OSP", fmt_fecha, fmt_cab)
     escribir_legal(wb, "LEGAL VDF", wb_legal["legal_vdf"], "VDF", fmt_fecha, fmt_cab)
     escribir_previsiones(wb, headers, previas, irs, calc)
+    escribir_informe(previas, irs, calc)
     escribir_zoom(wb)
     escribir_detalle(wb, jmap, fmt_fecha, fmt_cab)
     escribir_drive(wb, drive_hdr, drive_rows, fmt_fecha, fmt_cab)

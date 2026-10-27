@@ -25,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -96,20 +97,8 @@ def limpiar_subidas() -> None:
             pass
 
 
-def _avance(linea: str, actual: int) -> int:
-    if "FASE 1" in linea:
-        return 10
-    if "FASE 2" in linea:
-        return 40
-    if "FASE 5" in linea:
-        return 65
-    if "[OK] Proceso completado" in linea:
-        return 100
-    return actual
-
-
 def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
-    """Lanza main.py y transmite su salida en vivo (sin bloquear el pipe)."""
+    """Lanza main.py y muestra progreso, cronómetro y consola en vivo."""
     proceso = subprocess.Popen(
         cmd, cwd=str(BASE), env=entorno_hijos(),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -126,13 +115,30 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
 
     threading.Thread(target=lector, daemon=True).start()
 
-    lineas = []
+    inicio_dt = datetime.now()
     inicio = time.time()
+    lineas = []
+    avance = 0.0
+    tope = 5.0
     ultimo = 0.0
-    avance = 0
+
+    def refrescar(barra, reloj, consola, texto):
+        trans = time.time() - inicio
+        reloj.markdown(
+            f"**Inicio:** {inicio_dt:%d/%m/%Y %H:%M:%S}  ·  "
+            f"**Transcurrido:** {int(trans // 60):02d}:{int(trans % 60):02d}"
+        )
+        if lineas:
+            consola.code("\n".join(lineas[-14:]), language="text")
+        barra.progress(min(int(avance), 99), text=texto[:120])
+
     try:
         with st.status("Procesando datos...", expanded=True) as estado:
             barra = st.progress(0, text="Iniciando el pipeline...")
+            reloj = st.empty()
+            consola = st.empty()
+            refrescar(barra, reloj, consola, "Iniciando...")
+
             while True:
                 try:
                     linea = cola.get(timeout=0.5)
@@ -142,6 +148,10 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
                         raise TimeoutError(
                             f"El proceso superó {timeout // 60} minutos."
                         )
+                    if time.time() - ultimo > 0.5:
+                        refrescar(barra, reloj, consola,
+                                  lineas[-1] if lineas else "Esperando salida...")
+                        ultimo = time.time()
                     continue
 
                 if linea is None:
@@ -151,17 +161,28 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
                 if not linea:
                     continue
                 lineas.append(linea)
-                avance = _avance(linea, avance)
 
-                if time.time() - ultimo > 0.4:
-                    barra.progress(min(avance, 99), text=linea[:120])
+                if "FASE 1" in linea:
+                    avance, tope = 5, 35
+                elif "FASE 2" in linea:
+                    avance, tope = max(avance, 35), 60
+                elif "FASE 5" in linea:
+                    avance, tope = max(avance, 60), 95
+                elif "[OK] Proceso completado" in linea:
+                    avance, tope = 100, 100
+                else:
+                    avance = min(tope, avance + 0.2)
+
+                if time.time() - ultimo > 0.35:
+                    refrescar(barra, reloj, consola, linea)
                     estado.update(label=f"Procesando... {linea[:90]}")
                     ultimo = time.time()
 
             codigo = proceso.wait()
             if codigo != 0:
                 raise RuntimeError(f"El pipeline terminó con código {codigo}.")
-            barra.progress(100, text="Proceso completado")
+            avance = 100
+            refrescar(barra, reloj, consola, "Proceso completado")
             estado.update(label="Proceso completado", state="complete")
     except Exception:
         if proceso.poll() is None:
@@ -299,6 +320,8 @@ if pulsado:
                 f"--jira-out={carpeta_salida / 'JIRA.xlsx'}",
                 f"--out={carpeta_salida}",
             ]
+            jira_path = ruta / "JIRA con DR.xlsx"
+            hoja_path = ruta / "Hoja de cálculo sin título.xlsx"
             if anterior_local is not None:
                 cmd.append(f"--anterior={anterior_local}")
             if revision_local is not None:
@@ -327,13 +350,17 @@ if pulsado:
                 f"--jira-out={SALIDA / 'JIRA.xlsx'}",
                 f"--out={SALIDA}",
             ]
+            jira_path = rutas["JIRA con DR.xlsx"]
+            hoja_path = rutas["Hoja de cálculo sin título.xlsx"]
             if up_anterior is not None:
                 cmd.append(f"--anterior={rutas['Seguimiento_Previsiones_Limpio_anterior.xlsx']}")
 
         t0 = time.time()
         log = ejecutar_con_progreso(cmd, timeout=3600)
         datos = leer_salidas(carpeta_salida)
-        datos.update({"elapsed": time.time() - t0, "log": log})
+        datos.update({"elapsed": time.time() - t0, "log": log,
+                      "carpeta": str(carpeta_salida),
+                      "jira": str(jira_path), "hoja": str(hoja_path)})
         st.session_state.resultado = datos
 
     except TimeoutError as e:
@@ -397,3 +424,41 @@ st.caption(
     "Fase 1: actualiza el Seguimiento E2E. Fase 2: genera el Legal VDF/OSP. "
     "Fase 5: construye el Seguimiento de Previsiones limpio (ZOOM incluido)."
 )
+
+# ----------------------------------------------------------------------
+# 4 · Auditoría de tickets
+# ----------------------------------------------------------------------
+st.subheader("4 · Auditoría de tickets")
+if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
+    base_audit = Path(res["carpeta"]) if res else None
+    if base_audit is None or not (base_audit / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+        st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
+    else:
+        jira_a = Path(res["jira"])
+        hoja_a = Path(res["hoja"])
+        if not jira_a.is_file():
+            jira_a = BASE / "Nueva carpeta (2)" / "JIRA con DR.xlsx"
+        if not hoja_a.is_file():
+            hoja_a = BASE / "Nueva carpeta (2)" / "Hoja de cálculo sin título.xlsx"
+        salida_audit = base_audit / "Auditoria_Tickets_Faltantes.xlsx"
+        cmd = [
+            sys.executable, str(HERE / "fase6_auditoria.py"),
+            f"--jira={jira_a}", f"--hoja={hoja_a}",
+            f"--seguimiento={base_audit / 'seguimiento.xlsx'}",
+            f"--prev={base_audit / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--out={salida_audit}",
+        ]
+        with st.spinner("Buscando IRs huérfanos..."):
+            p = subprocess.run(cmd, cwd=str(BASE), env=entorno_hijos(),
+                               capture_output=True, text=True, timeout=900)
+        if p.returncode != 0:
+            st.error("La auditoría falló.")
+            st.code((p.stdout or "") + "\n" + (p.stderr or ""), language="text")
+        elif salida_audit.is_file():
+            st.success("Auditoría completada.")
+            st.download_button(
+                "⬇️ Auditoria_Tickets_Faltantes.xlsx",
+                data=salida_audit.read_bytes(),
+                file_name="Auditoria_Tickets_Faltantes.xlsx",
+                mime=MIME_XLSX, width="stretch", key="dl_audit",
+            )

@@ -265,6 +265,10 @@ las fórmulas de PREVISIONES JUAN. Si no se aporta, se genera desde cero
 En ambos modos:
 
 - Botón **🚀 Ejecutar Proceso**.
+- **Cronómetro** con fecha/hora de inicio y tiempo transcurrido.
+- **Barra de progreso real** por fases (1, 2 y 5).
+- **Consola en vivo** con las últimas líneas de `print`.
+- Botón **🔎 Ejecutar Auditoría de Tickets** (Fase 6).
 - Ejecuta **`main.py`** (Fases 1 + 2 + 5).
 - Salida leída **en tiempo real** con `Popen` + cola y `PYTHONUNBUFFERED=1`
   (evita el bloqueo del buffer en Windows), con `st.status`, `st.progress` y
@@ -372,7 +376,8 @@ libro original):
 - 5 semanas dinámicas (lunes actual + 4) + No planificada + **> 5 sem** + Total.
 - Cabeceras **`WXX_AAAA`** con `WEEKNUM(fecha,21)` (semana ISO) y año ISO.
   Los `COUNTIFS` usan una **fila oculta** con las fechas reales.
-- Base común: patrón + `Fecha PO` (T) > 0.
+- Base común: patrón + `Fecha PO` (T) > 0 + Estado distinto de `RIP`.
+- **Exclusión**: no se cuentan tickets con Fecha Real RFOA (AU) informada.
 - **Ejecutadas antes**: si la Fecha RFOA real (AU) es anterior al lunes actual,
   la incidencia **no** cuenta como planificada en ninguna semana (aunque su
   Previsión RFOA sea de esta semana o futura). Si AU es de esta semana, sí
@@ -411,11 +416,42 @@ libro original):
   `Subtareas.issueKey`; si no hay, `Sin IR`.
 
 `DETALLE_TICKETS` es **visible**, con **una fila por IR** y los escenarios
-concatenados con ` + `. La semana de previsión muestra `Sin previsión` cuando
-AV está vacía, o cuando AV es pasada y **no** hay Fecha RFOA real (AU); si AU
-existe, muestra `Pasada`.
+concatenados con ` + `. Excluye los tickets con AU informada y los que están
+en estado `RIP`. La semana de previsión muestra `Sin previsión` cuando AV está
+vacía, o cuando AV es pasada y **no** hay Fecha RFOA real (AU).
 
-### 6.6 Generación
+### 6.6 Informe de cambios
+
+Cada ejecución genera `Informe_Cambios.xlsx` junto al libro final, con:
+
+- `ESCENARIO_CAMBIADO`: IR, H anterior y H actual.
+- `IR_TX_AJ_ACTUALIZADO`: IR, AB/AJ anterior y actual (cuando antes no había
+  IR y ahora sí).
+- `NUEVOS`: IRs añadidos desde `drive`.
+
+### 6.7 Fase 6 — Auditoría de tickets
+
+`fase6_auditoria.py` compara los IRs de `DATA IN` (JIRA), `drive` y
+`seguimiento.xlsx` con la columna A de `PREVISIONES JUAN` y genera
+`Auditoria_Tickets_Faltantes.xlsx` con IR, Origen, H, AB y AJ.
+
+La app incorpora el botón **🔎 Ejecutar Auditoría de Tickets** y su descarga.
+
+### 6.8 Auditoría de las macros 7, 8 y 9
+
+- **copiar_juan (Módulo8)**: crea `DD-MM-YYYY_FICHERO.xlsx`; copia
+  `SEGUIMIENTO PREVISIONES.xlsx` → `PREVISIONES JUAN` (A:CA, valores y
+  formatos) y la tabla `Tabla1` de `Previsiones de RFOA_central.xlsx` (hoja
+  `Nodos`, solo celdas visibles) → `RFOA SIN PREVISION`; añade `DUPLICADOS`.
+- **copiar_ADICIONALES (Módulo3)**: `JIRA.XLSX` → hoja `IR_VDF`, rango
+  `A5:GX60000`, pegado como valores en `ADICIONALES SEGUIMIENTO.xlsx` →
+  `DATA IN!A3`.
+- **copiar_GAPSEMI (Módulo4)**: `JIRA.XLSX` → `IR_VDF`, `A5:GX60000` → valores
+  en `GAP semi.xlsx` → `DATA IN!A3` (limpia filtros antes).
+- **copiar_DRIVE_SEMI (Módulo6)**: `Seguimiento.XLSX` → `Nuevo seguimiento`,
+  `A5:DY10000` → valores en `GAP semi.xlsx` → `SEGUIMIENTO!A4`.
+
+### 6.9 Generación
 
 ```bash
 # cada actualización
@@ -458,8 +494,12 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   7.649/7.649 IR conservados (`validar_irs`).
 - Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
-- Streamlit en modo carpeta local con archivo anterior: 137,8 s, 3 descargas,
-  sin errores.
+- Streamlit en modo carpeta local con archivo anterior: 137,3 s, 3 descargas,
+  cronómetro/progreso/consola y botón de auditoría, sin errores.
+- Fase 5: `Informe_Cambios.xlsx` con 3 hojas; ZOOM y DETALLE excluyen AU
+  informada y RIP; H/AB/AJ recalculadas en todas las filas.
+- Fase 6: auditoría probada con 28.781 claves huérfanas (DATA IN incluye todos
+  los IR/DR/RE de JIRA) y salida `Auditoria_Tickets_Faltantes.xlsx`.
 - ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
 - DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
 - Sin plantilla: PREVISIONES se hereda del archivo de la semana anterior.
