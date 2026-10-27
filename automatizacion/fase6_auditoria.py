@@ -12,7 +12,7 @@ Uso:
 """
 
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import openpyxl
@@ -41,23 +41,40 @@ import fase5_previsiones as f5  # noqa: E402
 
 
 def _claves_jira():
+    """Devuelve (IR de radio, IR de radio con Fecha PO > 0)."""
     wb = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
     ws = wb["IR_VDF"]
-    out = []
-    for fila in ws.iter_rows(min_row=5, max_col=1, values_only=True):
-        if fila[0] not in (None, ""):
-            out.append(str(fila[0]).strip())
+    hdr = list(next(ws.iter_rows(min_row=4, max_row=4, values_only=True)))
+    idx = {h: i for i, h in enumerate(hdr) if h}
+    i_clave, i_po = idx.get("Clave"), idx.get("Fecha PO")
+
+    radio, con_po = set(), set()
+    for fila in ws.iter_rows(min_row=5, values_only=True):
+        clave = fila[i_clave] if i_clave is not None and i_clave < len(fila) else None
+        if clave in (None, ""):
+            continue
+        clave = str(clave).strip()
+        if not clave.upper().startswith("IR-"):
+            continue
+        radio.add(clave)
+        po = fila[i_po] if i_po is not None and i_po < len(fila) else None
+        if isinstance(po, (date, datetime)):
+            con_po.add(clave)
+        elif isinstance(po, (int, float)) and po > 0:
+            con_po.add(clave)
     wb.close()
-    return out
+    return radio, con_po
 
 
 def _claves_seguimiento():
     wb = openpyxl.load_workbook(SEGUIMIENTO, read_only=True, data_only=True)
     ws = wb["NUEVO SEGUIMIENTO"]
-    out = []
+    out = set()
     for fila in ws.iter_rows(min_row=2, min_col=2, max_col=2, values_only=True):
         if fila[0] not in (None, ""):
-            out.append(str(fila[0]).strip())
+            ir = str(fila[0]).strip()
+            if ir.upper().startswith("IR-"):
+                out.add(ir)
     wb.close()
     return out
 
@@ -85,18 +102,22 @@ def main() -> None:
     print("=" * 70)
 
     prev = _claves_prev()
-    jira = _claves_jira()
-    seg = _claves_seguimiento()
+    jira_radio, jira_po = _claves_jira()
+    drive = _claves_seguimiento()
 
+    universo = jira_radio | drive
+    elegibles = {ir for ir in universo if ir in drive or ir in jira_po}
     origenes = {}
-    for ir in jira:
-        origenes.setdefault(ir, set()).add("DATA IN")
-    for ir in seg:
-        origenes.setdefault(ir, set()).add("drive/seguimiento")
+    for ir in elegibles:
+        if ir in drive:
+            origenes.setdefault(ir, set()).add("drive")
+        if ir in jira_po:
+            origenes.setdefault(ir, set()).add("DATA IN (Fecha PO>0)")
 
-    huerfanos = sorted(ir for ir in origenes if ir not in prev)
+    huerfanos = sorted(ir for ir in elegibles if ir not in prev)
     print(f"  PREVISIONES: {len(prev):,} IRs")
-    print(f"  DATA IN: {len(set(jira)):,} | drive/seguimiento: {len(set(seg)):,}")
+    print(f"  IR de radio en DATA IN: {len(jira_radio):,} | con Fecha PO>0: {len(jira_po):,}")
+    print(f"  IR de radio en drive: {len(drive):,} | elegibles: {len(elegibles):,}")
     print(f"  Huérfanos: {len(huerfanos):,}")
 
     jmap = f5.leer_jira_map()

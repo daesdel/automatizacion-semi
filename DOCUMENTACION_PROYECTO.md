@@ -431,8 +431,9 @@ Cada ejecución genera `Informe_Cambios.xlsx` junto al libro final, con:
 
 ### 6.7 Fase 6 — Auditoría de tickets
 
-`fase6_auditoria.py` compara los IRs de `DATA IN` (JIRA), `drive` y
-`seguimiento.xlsx` con la columna A de `PREVISIONES JUAN` y genera
+`fase6_auditoria.py` compara con la columna A de `PREVISIONES JUAN` solo los
+**IR de radio** (`IR-...`) que estén en `drive` **o** tengan `Fecha PO > 0` en
+`DATA IN`. Excluye DR, RE y tickets sin actividad. Genera
 `Auditoria_Tickets_Faltantes.xlsx` con IR, Origen, H, AB y AJ.
 
 La app incorpora el botón **🔎 Ejecutar Auditoría de Tickets** y su descarga.
@@ -450,6 +451,15 @@ La app incorpora el botón **🔎 Ejecutar Auditoría de Tickets** y su descarga
   en `GAP semi.xlsx` → `DATA IN!A3` (limpia filtros antes).
 - **copiar_DRIVE_SEMI (Módulo6)**: `Seguimiento.XLSX` → `Nuevo seguimiento`,
   `A5:DY10000` → valores en `GAP semi.xlsx` → `SEGUIMIENTO!A4`.
+
+**Riesgos detectados para las Fases 7–9** (no repetir en Python):
+
+- Rutas absolutas hardcodeadas (`C:\Users\describa\Downloads\Nueva carpeta (2)\`).
+- Rangos fijos (`A:CA`, `GX60000`, `DY10000`) en vez de última fila/columna real.
+- `PasteSpecial` sin comprobar filas vacías, filtros ni duplicados.
+- Nombres de archivo/pestaña sensibles a mayúsculas y a la fecha del sistema.
+- En Python: usar `pathlib`, rangos dinámicos (`max_row`/`max_column`) y
+  validaciones de existencia antes de abrir.
 
 ### 6.9 Generación
 
@@ -498,8 +508,8 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   cronómetro/progreso/consola y botón de auditoría, sin errores.
 - Fase 5: `Informe_Cambios.xlsx` con 3 hojas; ZOOM y DETALLE excluyen AU
   informada y RIP; H/AB/AJ recalculadas en todas las filas.
-- Fase 6: auditoría probada con 28.781 claves huérfanas (DATA IN incluye todos
-  los IR/DR/RE de JIRA) y salida `Auditoria_Tickets_Faltantes.xlsx`.
+- Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles y
+  **7.162 huérfanos** en la prueba, con H/AB/AJ calculadas.
 - ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
 - DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
 - Sin plantilla: PREVISIONES se hereda del archivo de la semana anterior.
