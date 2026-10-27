@@ -269,6 +269,7 @@ En ambos modos:
 - **Barra de progreso real** por fases (1, 2 y 5).
 - **Consola en vivo** con las últimas líneas de `print`.
 - Botón **🔎 Ejecutar Auditoría de Tickets** (Fase 6).
+- Botón **📁 Generar Fichero (Fase 7)**.
 - Ejecuta **`main.py`** (Fases 1 + 2 + 5).
 - Salida leída **en tiempo real** con `Popen` + cola y `PYTHONUNBUFFERED=1`
   (evita el bloqueo del buffer en Windows), con `st.status`, `st.progress` y
@@ -467,7 +468,23 @@ vivo, mensaje de éxito y descarga.
 - En Python: usar `pathlib`, rangos dinámicos (`max_row`/`max_column`) y
   validaciones de existencia antes de abrir.
 
-### 6.9 Generación
+### 6.9 Fase 7 — Fichero de trabajo
+
+`fase7_fichero.py` genera `resultados/DDMMYYYY_FICHERO.xlsx` con:
+
+- **PREVISIONES JUAN**: copia la hoja completa, sustituyendo fórmulas por sus
+  valores cacheados (como hacía `copiar_juan`) y conservando formato, anchos y
+  formato condicional.
+- **RFOA SIN PREVISION**: lee `Previsiones de RFOA_central.xlsx` → `Nodos`,
+  tabla `Tabla1`, y copia solo las filas visibles (si hay filtros), con tabla
+  `tbl_RFOA_SIN_PREVISION`.
+- **DUPLICADOS**: detecta IRs repetidos en la columna A de PREVISIONES, pinta
+  la celda de morado y lista TICKET/HOJA.
+
+La app incorpora **📁 Generar Fichero (Fase 7)** con cronómetro, barra de
+progreso, consola en vivo y descarga del FICHERO.
+
+### 6.10 Generación
 
 ```bash
 # cada actualización
@@ -510,8 +527,10 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   7.649/7.649 IR conservados (`validar_irs`).
 - Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
-- Streamlit en modo carpeta local: 145,2 s el pipeline + 21,1 s la auditoría,
-  4 descargas (incluida `Auditoria_Tickets_Faltantes.xlsx`), sin errores.
+- Streamlit en modo carpeta local: 138,4 s el pipeline + 32,1 s la Fase 7,
+  4 descargas (incluida `27102026_FICHERO.xlsx`), sin errores.
+- Auditoría: 21,1 s con descarga independiente.
+- Fase 7: 27,9 s por CLI; 3 hojas, 41 filas RFOA visibles, 0 duplicados.
 - Fase 6 con `JIRA.xlsx` correcto: 7.162 huérfanos; con archivo equivocado
   muestra error amigable, sin Traceback.
 - Fase 5: `Informe_Cambios.xlsx` con 3 hojas; ZOOM y DETALLE excluyen AU

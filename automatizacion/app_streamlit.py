@@ -25,7 +25,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -473,3 +473,36 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
                 st.code(log, language="text")
         except Exception as e:
             st.error(f"La auditoría falló: {e}")
+
+# ----------------------------------------------------------------------
+# 5 · Fichero de trabajo (Fase 7)
+# ----------------------------------------------------------------------
+st.subheader("5 · Fichero de trabajo (Fase 7)")
+if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
+    base_f7 = Path(res["carpeta"]) if res else None
+    if base_f7 is None or not (base_f7 / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+        st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
+    else:
+        rfoa = BASE / "Nueva carpeta (2)" / "Previsiones de RFOA_central.xlsx"
+        salida_f7 = base_f7 / f"{date.today():%d%m%Y}_FICHERO.xlsx"
+        cmd = [
+            sys.executable, str(HERE / "fase7_fichero.py"),
+            f"--prev={base_f7 / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--rfoa={rfoa}",
+            f"--out={salida_f7}",
+        ]
+        try:
+            log = ejecutar_con_progreso(cmd, timeout=900, auditoria=True)
+            if not salida_f7.is_file():
+                raise RuntimeError("La Fase 7 terminó sin generar el FICHERO.")
+            st.success("Fichero generado.")
+            st.download_button(
+                f"⬇️ {salida_f7.name}",
+                data=salida_f7.read_bytes(),
+                file_name=salida_f7.name,
+                mime=MIME_XLSX, width="stretch", key="dl_f7",
+            )
+            with st.expander("Ver consola de la Fase 7"):
+                st.code(log, language="text")
+        except Exception as e:
+            st.error(f"La Fase 7 falló: {e}")
