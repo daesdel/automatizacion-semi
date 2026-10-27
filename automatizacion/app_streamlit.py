@@ -97,7 +97,8 @@ def limpiar_subidas() -> None:
             pass
 
 
-def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
+def ejecutar_con_progreso(cmd: list, timeout: int = 3600,
+                          auditoria: bool = False) -> str:
     """Lanza main.py y muestra progreso, cronómetro y consola en vivo."""
     proceso = subprocess.Popen(
         cmd, cwd=str(BASE), env=entorno_hijos(),
@@ -133,7 +134,8 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
         barra.progress(min(int(avance), 99), text=texto[:120])
 
     try:
-        with st.status("Procesando datos...", expanded=True) as estado:
+        titulo = "Procesando auditoría..." if auditoria else "Procesando datos..."
+        with st.status(titulo, expanded=True) as estado:
             barra = st.progress(0, text="Iniciando el pipeline...")
             reloj = st.empty()
             consola = st.empty()
@@ -162,7 +164,12 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600) -> str:
                     continue
                 lineas.append(linea)
 
-                if "FASE 1" in linea:
+                if auditoria:
+                    if "[OK]" in linea:
+                        avance, tope = 100, 100
+                    else:
+                        avance = min(95, avance + 1.5)
+                elif "FASE 1" in linea:
                     avance, tope = 5, 35
                 elif "FASE 2" in linea:
                     avance, tope = max(avance, 35), 60
@@ -434,10 +441,13 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
     if base_audit is None or not (base_audit / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
         st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
     else:
-        jira_a = Path(res["jira"])
-        hoja_a = Path(res["hoja"])
+        # La auditoría necesita el JIRA.xlsx generado por la Fase 1
+        jira_a = base_audit / "JIRA.xlsx"
         if not jira_a.is_file():
-            jira_a = BASE / "Nueva carpeta (2)" / "JIRA con DR.xlsx"
+            jira_a = BASE / "Nueva carpeta (2)" / "JIRA.xlsx"
+        if not jira_a.is_file():
+            jira_a = Path(res["jira"])
+        hoja_a = Path(res["hoja"])
         if not hoja_a.is_file():
             hoja_a = BASE / "Nueva carpeta (2)" / "Hoja de cálculo sin título.xlsx"
         salida_audit = base_audit / "Auditoria_Tickets_Faltantes.xlsx"
@@ -448,13 +458,10 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
             f"--prev={base_audit / 'Seguimiento_Previsiones_Limpio.xlsx'}",
             f"--out={salida_audit}",
         ]
-        with st.spinner("Buscando IRs huérfanos..."):
-            p = subprocess.run(cmd, cwd=str(BASE), env=entorno_hijos(),
-                               capture_output=True, text=True, timeout=900)
-        if p.returncode != 0:
-            st.error("La auditoría falló.")
-            st.code((p.stdout or "") + "\n" + (p.stderr or ""), language="text")
-        elif salida_audit.is_file():
+        try:
+            log = ejecutar_con_progreso(cmd, timeout=900, auditoria=True)
+            if not salida_audit.is_file():
+                raise RuntimeError("La auditoría terminó sin generar el archivo.")
             st.success("Auditoría completada.")
             st.download_button(
                 "⬇️ Auditoria_Tickets_Faltantes.xlsx",
@@ -462,3 +469,7 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
                 file_name="Auditoria_Tickets_Faltantes.xlsx",
                 mime=MIME_XLSX, width="stretch", key="dl_audit",
             )
+            with st.expander("Ver consola de la auditoría"):
+                st.code(log, language="text")
+        except Exception as e:
+            st.error(f"La auditoría falló: {e}")

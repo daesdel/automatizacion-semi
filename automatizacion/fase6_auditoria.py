@@ -92,8 +92,33 @@ def _claves_prev():
     return out
 
 
+def _validar_jira() -> None:
+    if not JIRA.is_file():
+        sys.exit(
+            "No existe JIRA.xlsx en la ruta indicada. Ejecuta primero el "
+            "proceso principal (Fase 1) para generarlo.\n"
+            f"Ruta buscada: {JIRA}"
+        )
+    wb = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
+    hojas = wb.sheetnames
+    wb.close()
+    if "IR_VDF" not in hojas:
+        sys.exit(
+            "El archivo indicado no parece un JIRA.xlsx válido: no contiene "
+            "la pestaña IR_VDF. Ejecuta primero el proceso principal.\n"
+            f"Archivo: {JIRA}\nHojas: {', '.join(hojas)}"
+        )
+
+
 def main() -> None:
-    faltan = [p for p in (JIRA, SEGUIMIENTO, HOJA) if not p.is_file()]
+    if not JIRA.is_file():
+        sys.exit(
+            "No existe JIRA.xlsx en la ruta indicada. Ejecuta primero el "
+            "proceso principal (Fase 1) para generarlo.\n"
+            f"Ruta buscada: {JIRA}"
+        )
+    _validar_jira()
+    faltan = [p for p in (SEGUIMIENTO, HOJA) if not p.is_file()]
     if faltan:
         sys.exit("Faltan archivos: " + ", ".join(str(p) for p in faltan))
 

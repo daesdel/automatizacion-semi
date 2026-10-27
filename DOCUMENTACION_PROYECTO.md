@@ -436,7 +436,13 @@ Cada ejecución genera `Informe_Cambios.xlsx` junto al libro final, con:
 `DATA IN`. Excluye DR, RE y tickets sin actividad. Genera
 `Auditoria_Tickets_Faltantes.xlsx` con IR, Origen, H, AB y AJ.
 
-La app incorpora el botón **🔎 Ejecutar Auditoría de Tickets** y su descarga.
+La app usa el **`JIRA.xlsx` generado por la Fase 1** en la carpeta de salida
+(no `JIRA con DR.xlsx`). Si no existe o no contiene `IR_VDF`, muestra un error
+amigable indicando que se ejecute primero el proceso principal.
+
+El botón **🔎 Ejecutar Auditoría de Tickets** tiene la misma experiencia que el
+principal: cronómetro con fecha/hora, barra de progreso 0–100 %, consola en
+vivo, mensaje de éxito y descarga.
 
 ### 6.8 Auditoría de las macros 7, 8 y 9
 
@@ -504,8 +510,10 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   7.649/7.649 IR conservados (`validar_irs`).
 - Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
-- Streamlit en modo carpeta local con archivo anterior: 137,3 s, 3 descargas,
-  cronómetro/progreso/consola y botón de auditoría, sin errores.
+- Streamlit en modo carpeta local: 145,2 s el pipeline + 21,1 s la auditoría,
+  4 descargas (incluida `Auditoria_Tickets_Faltantes.xlsx`), sin errores.
+- Fase 6 con `JIRA.xlsx` correcto: 7.162 huérfanos; con archivo equivocado
+  muestra error amigable, sin Traceback.
 - Fase 5: `Informe_Cambios.xlsx` con 3 hojas; ZOOM y DETALLE excluyen AU
   informada y RIP; H/AB/AJ recalculadas en todas las filas.
 - Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles y
