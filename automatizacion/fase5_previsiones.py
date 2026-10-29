@@ -800,6 +800,8 @@ def main() -> None:
             convertir_a_valores(DESTINO)
             print("    Recalculado con Excel y convertido a valores")
         else:
+            print("    Aviso: En Mac el cálculo de fórmulas es extremadamente "
+                  "lento. Se recomienda usar Windows para generar el FICHERO final.")
             print("    Sin Excel: calculando valores con pycel por bloques...")
             try:
                 from calc_pycel import calcular_valores

@@ -222,6 +222,8 @@ def main() -> None:
         for fila in ws_tmp.iter_rows(min_row=2) for c in fila
     )
     if hay_formulas:
+        print("    Aviso: En Mac el cálculo de fórmulas es extremadamente lento. "
+              "Se recomienda usar Windows para generar el FICHERO final.")
         print("    PREVISIONES con fórmulas: calculando con pycel...")
         wb.close(); wv.close()
         try:

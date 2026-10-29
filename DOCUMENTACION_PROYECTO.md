@@ -499,6 +499,11 @@ celdas de `Nodos` (tabla `Tabla1`), además de crear
 
 ### 6.10 Cálculo: Excel COM o pycel
 
+> **Windows es el entorno oficial de producción.** El cálculo se hace con
+> Excel COM (`pywin32`), que recalcula todo el libro en segundos y genera el
+> FICHERO limpio con valores. Mac queda para desarrollo y pruebas de 50 filas;
+> el fallback pycel es funcional pero puede tardar horas con el libro completo.
+
 La Fase 5 intenta recalcular en **Windows con Excel COM**:
 
 1. Abre el libro en una instancia invisible de Excel.
@@ -526,8 +531,10 @@ Dependencias en Mac/Windows sin Excel:
 py -m pip install pycel==1.0b30 "networkx==2.6.3" ruamel.yaml
 ```
 
-El cálculo completo en Mac tarda varios minutos (bloques de 50 filas); en
-Windows con Excel es cuestión de segundos.
+El cálculo completo en Mac puede tardar horas (bloques de 50 filas); en
+Windows con Excel es cuestión de segundos. La Fase 5 y la Fase 7 muestran el
+aviso: “En Mac el cálculo de fórmulas es extremadamente lento. Se recomienda
+usar Windows para generar el FICHERO final.”
 
 `--sin-recalcular` omite Excel, pero Fase 7 seguirá calculando con pycel para
 entregar valores.
