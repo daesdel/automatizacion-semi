@@ -800,8 +800,26 @@ def main() -> None:
             convertir_a_valores(DESTINO)
             print("    Recalculado con Excel y convertido a valores")
         else:
-            print("    [AVISO] Sin Excel: se conservan las fórmulas; "
-                  "Fase 7 las copiará con DATA IN oculta")
+            print("    Sin Excel: calculando valores con pycel por bloques...")
+            try:
+                from calc_pycel import calcular_valores
+                vals = calcular_valores(
+                    DESTINO,
+                    progreso=lambda hechas, total: print(
+                        f"      pycel: {hechas}/{total} filas", end="\r"),
+                )
+                print()
+                wb_val = openpyxl.load_workbook(DESTINO)
+                ws_val = wb_val["PREVISIONES JUAN"]
+                for (fila, col), valor in vals.items():
+                    ws_val.cell(row=fila, column=col, value=valor)
+                wb_val.save(DESTINO)
+                wb_val.close()
+                print("    Calculado con pycel y convertido a valores")
+            except Exception as e:  # noqa: BLE001
+                print(f"    [AVISO] No se pudo calcular con pycel: {e}")
+                print("    Se conservan las fórmulas; instala pycel: "
+                      "py -m pip install pycel")
 
     tam = DESTINO.stat().st_size / 1e6
     print("\n" + "=" * 70)

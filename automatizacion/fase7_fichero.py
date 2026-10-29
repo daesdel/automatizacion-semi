@@ -87,13 +87,10 @@ def copiar_previsiones(wb, wv):
     )
 
     if tiene_formulas:
-        # Modo fórmulas: conservar DATA IN oculta para que Excel calcule.
-        for nombre in list(wb.sheetnames):
-            if nombre not in ("PREVISIONES JUAN", "DATA IN"):
-                wb.remove(wb[nombre])
-        if "DATA IN" in wb.sheetnames:
-            wb["DATA IN"].sheet_state = "hidden"
-        print("    PREVISIONES con fórmulas: se conserva DATA IN oculta")
+        raise RuntimeError(
+            "PREVISIONES JUAN sigue conteniendo fórmulas; no se puede generar "
+            "el FICHERO limpio. Revisa la instalación de pycel."
+        )
     else:
         for fila in ws.iter_rows(min_row=2):
             for celda in fila:
@@ -216,6 +213,24 @@ def main() -> None:
 
     wb = openpyxl.load_workbook(OUT)
     wv = openpyxl.load_workbook(PREV, data_only=True)
+
+    # Garantía: si quedan fórmulas, calcularlas antes de montar el FICHERO.
+    ws_tmp = wb["PREVISIONES JUAN"]
+    hay_formulas = any(
+        isinstance(c.value, ArrayFormula)
+        or (isinstance(c.value, str) and c.value.startswith("="))
+        for fila in ws_tmp.iter_rows(min_row=2) for c in fila
+    )
+    if hay_formulas:
+        print("    PREVISIONES con fórmulas: calculando con pycel...")
+        wb.close(); wv.close()
+        try:
+            from calc_pycel import convertir_a_valores
+            convertir_a_valores(OUT)
+        except Exception as e:  # noqa: BLE001
+            sys.exit(f"No se pudieron calcular las fórmulas con pycel: {e}")
+        wb = openpyxl.load_workbook(OUT)
+        wv = openpyxl.load_workbook(PREV, data_only=True)
 
     ws_prev = copiar_previsiones(wb, wv)
     copiar_rfoa(wb, ws_prev)

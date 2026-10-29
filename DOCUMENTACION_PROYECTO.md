@@ -497,21 +497,40 @@ La hoja **RFOA SIN PREVISION** clona estilos, anchos, altos y colores de las
 celdas de `Nodos` (tabla `Tabla1`), además de crear
 `tbl_RFOA_SIN_PREVISION`.
 
-### 6.10 Cálculo: Excel COM o fórmulas
+### 6.10 Cálculo: Excel COM o pycel
 
 La Fase 5 intenta recalcular en **Windows con Excel COM**:
 
 1. Abre el libro en una instancia invisible de Excel.
 2. `CalculateFullRebuild()` + guardar.
-3. Convierte las fórmulas a valores (hoja completa).
-4. La Fase 7 copia esos valores y genera 3 hojas.
+3. Convierte las fórmulas a valores.
 
 Si no hay Excel (Mac, pywin32 ausente, Excel ocupado), **no se usa
-LibreOffice** (no soporta XLOOKUP/LET): se conservan las fórmulas y la Fase 7
-las copia junto con `DATA IN` oculta. El FICHERO resultante tiene 4 hojas
-(PREVISIONES, RFOA, DUPLICADOS y DATA IN oculta) y Excel lo calcula al abrir.
+LibreOffice**. Se usa **pycel 1.0b30** por bloques de 50 filas
+(`calc_pycel.py`):
 
-`--sin-recalcular` fuerza el modo fórmulas.
+- Expande `LET` y reescribe `XLOOKUP` como `INDEX/MATCH`.
+- Acota rangos completos (`A:FS`, `A:A`) a las dimensiones reales.
+- Añade `WEEKNUM` y `SEARCH` a pycel y aplica parches de compatibilidad con
+  Python 3.15/openpyxl.
+- Calcula celda a celda y sustituye las fórmulas por valores.
+
+La Fase 7 garantiza **siempre 3 hojas** (`PREVISIONES JUAN`,
+`RFOA SIN PREVISION`, `DUPLICADOS`), **sin fórmulas ni hojas ocultas**.
+Si al abrir el FICHERO quedasen fórmulas, Fase 7 vuelve a calcularlas con
+pycel antes de montar la salida.
+
+Dependencias en Mac/Windows sin Excel:
+
+```bash
+py -m pip install pycel==1.0b30 "networkx==2.6.3" ruamel.yaml
+```
+
+El cálculo completo en Mac tarda varios minutos (bloques de 50 filas); en
+Windows con Excel es cuestión de segundos.
+
+`--sin-recalcular` omite Excel, pero Fase 7 seguirá calculando con pycel para
+entregar valores.
 
 ### 6.11 Generación
 
@@ -568,8 +587,9 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   informada y RIP; H/AB/AJ recalculadas en todas las filas.
 - Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles,
   **7.162 huérfanos** la primera vez y **0 nuevos** al repetir (incremental).
-- Fase 7 sin Excel: modo fórmulas con `DATA IN` oculta (4 hojas, 13 MB);
-  con valores: 3 hojas y 1,55 MB.
+- Fase 7: 3 hojas con valores, sin fórmulas ni hojas ocultas (1,55 MB).
+- pycel: bloque de 50 filas calculado en 8,7 s; H2 coincide con el valor de
+  Excel (`Capacidad (Interna) 5G 700;NR700 EA`).
 - RFOA SIN PREVISION: 41 filas visibles y estilos clonados de `Nodos`.
 - ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
 - DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
