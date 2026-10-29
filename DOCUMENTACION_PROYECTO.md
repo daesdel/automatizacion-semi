@@ -477,9 +477,9 @@ vivo, mensaje de éxito y descarga.
 
 `fase7_fichero.py` genera `resultados/DDMMYYYY_FICHERO.xlsx` con:
 
-- **PREVISIONES JUAN**: copia la hoja completa, sustituyendo fórmulas por sus
-  valores cacheados (como hacía `copiar_juan`) y conservando formato, anchos y
-  formato condicional.
+- **PREVISIONES JUAN**: copia la hoja completa. Si la Fase 5 pudo recalcular
+  con Excel, copia valores; si no, copia las fórmulas y conserva `DATA IN`
+  oculta para que Excel las calcule al abrir.
 - **RFOA SIN PREVISION**: lee `Previsiones de RFOA_central.xlsx` → `Nodos`,
   tabla `Tabla1`, y copia solo las filas visibles (si hay filtros), con tabla
   `tbl_RFOA_SIN_PREVISION`.
@@ -493,7 +493,27 @@ dañados o abiertos en Excel, muestra un error amigable y no un Traceback.
 La app incorpora **📁 Generar Fichero (Fase 7)** con cronómetro, barra de
 progreso, consola en vivo y descarga del FICHERO.
 
-### 6.10 Generación
+La hoja **RFOA SIN PREVISION** clona estilos, anchos, altos y colores de las
+celdas de `Nodos` (tabla `Tabla1`), además de crear
+`tbl_RFOA_SIN_PREVISION`.
+
+### 6.10 Cálculo: Excel COM o fórmulas
+
+La Fase 5 intenta recalcular en **Windows con Excel COM**:
+
+1. Abre el libro en una instancia invisible de Excel.
+2. `CalculateFullRebuild()` + guardar.
+3. Convierte las fórmulas a valores (hoja completa).
+4. La Fase 7 copia esos valores y genera 3 hojas.
+
+Si no hay Excel (Mac, pywin32 ausente, Excel ocupado), **no se usa
+LibreOffice** (no soporta XLOOKUP/LET): se conservan las fórmulas y la Fase 7
+las copia junto con `DATA IN` oculta. El FICHERO resultante tiene 4 hojas
+(PREVISIONES, RFOA, DUPLICADOS y DATA IN oculta) y Excel lo calcula al abrir.
+
+`--sin-recalcular` fuerza el modo fórmulas.
+
+### 6.11 Generación
 
 ```bash
 # cada actualización
@@ -546,8 +566,11 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   muestra error amigable, sin Traceback.
 - Fase 5: `Informe_Cambios.xlsx` con 3 hojas; ZOOM y DETALLE excluyen AU
   informada y RIP; H/AB/AJ recalculadas en todas las filas.
-- Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles y
-  **7.162 huérfanos** en la prueba, con H/AB/AJ calculadas.
+- Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles,
+  **7.162 huérfanos** la primera vez y **0 nuevos** al repetir (incremental).
+- Fase 7 sin Excel: modo fórmulas con `DATA IN` oculta (4 hojas, 13 MB);
+  con valores: 3 hojas y 1,55 MB.
+- RFOA SIN PREVISION: 41 filas visibles y estilos clonados de `Nodos`.
 - ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
 - DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
 - Sin plantilla: PREVISIONES se hereda del archivo de la semana anterior.

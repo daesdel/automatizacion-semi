@@ -21,6 +21,7 @@ Uso:
     python automatizacion/fase5_previsiones.py --out=RUTA
 """
 
+import os
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -677,6 +678,63 @@ def escribir_informe(previas, irs, calc) -> None:
           f"{len(actualizados)} AB/AJ, {len(nuevos)} nuevos")
 
 
+
+
+# ----------------------------------------------------------------------
+# Recálculo con Excel (Windows) y conversión a valores
+# ----------------------------------------------------------------------
+def recalcular_con_excel(path: Path) -> bool:
+    """Abre el libro en Excel invisible, recalcula y guarda. Solo Windows."""
+    if os.name != "nt":
+        return False
+    try:
+        import pythoncom
+        import win32com.client as win32
+    except ImportError:
+        return False
+
+    excel = None
+    try:
+        pythoncom.CoInitialize()
+        excel = win32.DispatchEx("Excel.Application")
+        excel.Visible = False
+        excel.DisplayAlerts = False
+        libro = excel.Workbooks.Open(str(path))
+        excel.CalculateFullRebuild()
+        libro.Save()
+        libro.Close(SaveChanges=True)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"    [AVISO] No se pudo recalcular con Excel: {e}")
+        return False
+    finally:
+        try:
+            if excel is not None:
+                excel.Quit()
+        except Exception:
+            pass
+        try:
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
+
+
+def convertir_a_valores(path: Path) -> None:
+    """Sustituye fórmulas por sus valores cacheados tras el recálculo."""
+    wb = openpyxl.load_workbook(path)
+    wv = openpyxl.load_workbook(path, data_only=True)
+    for nombre in wb.sheetnames:
+        ws, wsv = wb[nombre], wv[nombre]
+        for fila in ws.iter_rows(min_row=2):
+            for celda in fila:
+                v = celda.value
+                if isinstance(v, ArrayFormula) or (isinstance(v, str) and v.startswith("=")):
+                    celda.value = wsv[celda.coordinate].value
+    wb.save(path)
+    wb.close()
+    wv.close()
+
+
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
@@ -736,6 +794,14 @@ def main() -> None:
     wb.close()
     for w in (wb_jira, wb_legal, wb_seg, wb_rev):
         w.close()
+
+    if "--sin-recalcular" not in sys.argv:
+        if recalcular_con_excel(DESTINO):
+            convertir_a_valores(DESTINO)
+            print("    Recalculado con Excel y convertido a valores")
+        else:
+            print("    [AVISO] Sin Excel: se conservan las fórmulas; "
+                  "Fase 7 las copiará con DATA IN oculta")
 
     tam = DESTINO.stat().st_size / 1e6
     print("\n" + "=" * 70)

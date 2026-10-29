@@ -16,6 +16,7 @@ Uso:
 
 import shutil
 import sys
+from copy import copy
 import time
 import zipfile
 from datetime import date
@@ -79,14 +80,29 @@ def _ref_limites(ref):
 def copiar_previsiones(wb, wv):
     ws = wb["PREVISIONES JUAN"]
     wsv = wv["PREVISIONES JUAN"]
-    for fila in ws.iter_rows():
-        for celda in fila:
-            v = celda.value
-            if isinstance(v, ArrayFormula) or (isinstance(v, str) and v.startswith("=")):
-                celda.value = wsv[celda.coordinate].value
-    for nombre in list(wb.sheetnames):
-        if nombre != "PREVISIONES JUAN":
-            wb.remove(wb[nombre])
+    tiene_formulas = any(
+        isinstance(c.value, ArrayFormula)
+        or (isinstance(c.value, str) and c.value.startswith("="))
+        for fila in ws.iter_rows(min_row=2) for c in fila
+    )
+
+    if tiene_formulas:
+        # Modo fórmulas: conservar DATA IN oculta para que Excel calcule.
+        for nombre in list(wb.sheetnames):
+            if nombre not in ("PREVISIONES JUAN", "DATA IN"):
+                wb.remove(wb[nombre])
+        if "DATA IN" in wb.sheetnames:
+            wb["DATA IN"].sheet_state = "hidden"
+        print("    PREVISIONES con fórmulas: se conserva DATA IN oculta")
+    else:
+        for fila in ws.iter_rows(min_row=2):
+            for celda in fila:
+                v = celda.value
+                if isinstance(v, ArrayFormula) or (isinstance(v, str) and v.startswith("=")):
+                    celda.value = wsv[celda.coordinate].value
+        for nombre in list(wb.sheetnames):
+            if nombre != "PREVISIONES JUAN":
+                wb.remove(wb[nombre])
     return ws
 
 
@@ -123,21 +139,30 @@ def copiar_rfoa(wb, ws_prev):
     ws = wb.create_sheet("RFOA SIN PREVISION")
     for r, fila in enumerate(filas, start=1):
         for c, v in enumerate(fila, start=1):
-            ws.cell(row=r, column=c, value=v)
-    for c in range(1, max_col - min_col + 2):
-        ws.column_dimensions[get_column_letter(c)].width = 18
-    for c in range(1, len(filas[0]) + 1):
-        celda = ws.cell(row=1, column=c)
-        celda.font = Font(bold=True, color="FFFFFF")
-        celda.fill = PatternFill("solid", fgColor="1F4E78")
-        celda.alignment = Alignment(horizontal="center", vertical="center")
+            dst = ws.cell(row=r, column=c, value=v)
+            src = ws_o.cell(row=min_row + r - 1, column=min_col + c - 1)
+            try:
+                dst._style = copy(src._style)
+            except Exception:
+                pass
+    for c in range(min_col, max_col + 1):
+        letra_o = get_column_letter(c)
+        letra_d = get_column_letter(c - min_col + 1)
+        ancho = ws_o.column_dimensions[letra_o].width
+        if ancho:
+            ws.column_dimensions[letra_d].width = ancho
+    for r in range(min_row, max_row + 1):
+        alto = ws_o.row_dimensions[r].height
+        if alto:
+            ws.row_dimensions[r - min_row + 1].height = alto
 
     if filas:
         ref = f"A1:{get_column_letter(len(filas[0]))}{len(filas)}"
         try:
             t = Table(displayName="tbl_RFOA_SIN_PREVISION", ref=ref)
+            estilo = getattr(getattr(tabla, "tableStyleInfo", None), "name", None)
             t.tableStyleInfo = TableStyleInfo(
-                name="TableStyleMedium2", showRowStripes=True)
+                name=estilo or "TableStyleMedium2", showRowStripes=True)
             ws.add_table(t)
         except Exception as e:  # noqa: BLE001
             print(f"    [AVISO] No se pudo crear la tabla RFOA: {e}")

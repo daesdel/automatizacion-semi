@@ -140,6 +140,25 @@ def main() -> None:
             origenes.setdefault(ir, set()).add("DATA IN (Fecha PO>0)")
 
     huerfanos = sorted(ir for ir in elegibles if ir not in prev)
+
+    anteriores = set()
+    if OUT.is_file():
+        try:
+            wb_old = openpyxl.load_workbook(OUT, read_only=True, data_only=True)
+            if "FALTANTES" in wb_old.sheetnames:
+                ws_old = wb_old["FALTANTES"]
+                for fila in ws_old.iter_rows(min_row=2, min_col=1, max_col=1,
+                                             values_only=True):
+                    if fila[0] not in (None, ""):
+                        anteriores.add(str(fila[0]).strip())
+            wb_old.close()
+        except Exception:
+            anteriores = set()
+    nuevos = [ir for ir in huerfanos if ir not in anteriores]
+    if anteriores:
+        print(f"  Auditoría anterior: {len(anteriores):,} IRs | nuevos: {len(nuevos):,}")
+    huerfanos = nuevos
+
     print(f"  PREVISIONES: {len(prev):,} IRs")
     print(f"  IR de radio en DATA IN: {len(jira_radio):,} | con Fecha PO>0: {len(jira_po):,}")
     print(f"  IR de radio en drive: {len(drive):,} | elegibles: {len(elegibles):,}")
@@ -152,20 +171,22 @@ def main() -> None:
     ws = wb.add_worksheet("FALTANTES")
     f_cab = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1})
     f_txt = wb.add_format({"border": 1, "valign": "top"})
-    cab = ["IR", "Origen", "H", "AB", "AJ"]
+    cab = ["IR", "Origen", "Estado", "H", "AB", "AJ"]
     for c, t in enumerate(cab):
         ws.write_string(0, c, t, f_cab)
     ws.set_column(0, 0, 14)
-    ws.set_column(1, 1, 24)
-    ws.set_column(2, 2, 42)
-    ws.set_column(3, 4, 16)
+    ws.set_column(1, 1, 30)
+    ws.set_column(2, 2, 22)
+    ws.set_column(3, 3, 42)
+    ws.set_column(4, 5, 16)
     for r, ir in enumerate(huerfanos, start=1):
         h, ab, aj = f5.calcular_manual(ir, jmap, tx, act)
         ws.write_string(r, 0, ir, f_txt)
         ws.write_string(r, 1, " + ".join(sorted(origenes[ir])), f_txt)
-        ws.write_string(r, 2, h or "", f_txt)
-        ws.write_string(r, 3, ab or "", f_txt)
-        ws.write_string(r, 4, aj or "", f_txt)
+        ws.write_string(r, 2, str(jmap.get(ir, {}).get("estado") or ""), f_txt)
+        ws.write_string(r, 3, h or "", f_txt)
+        ws.write_string(r, 4, ab or "", f_txt)
+        ws.write_string(r, 5, aj or "", f_txt)
     wb.close()
     print(f"  [OK] {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
 
