@@ -16,6 +16,8 @@ Uso:
 
 import shutil
 import sys
+import time
+import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -42,6 +44,25 @@ def _arg_path(nombre, defecto):
 PREV = _arg_path("prev", RESULTADOS / "Seguimiento_Previsiones_Limpio.xlsx")
 RFOA = _arg_path("rfoa", BASE_DIR / "Previsiones de RFOA_central.xlsx")
 OUT = _arg_path("out", RESULTADOS / f"{date.today():%d%m%Y}_FICHERO.xlsx")
+
+
+def _comprobar_xlsx(path: Path, etiqueta: str) -> None:
+    """Verifica que el .xlsx es un ZIP válido; reintenta si está escribiéndose."""
+    for intento in range(5):
+        try:
+            with zipfile.ZipFile(path) as z:
+                malo = z.testzip()
+            if malo:
+                raise zipfile.BadZipFile(f"entrada dañada: {malo}")
+            return
+        except (zipfile.BadZipFile, EOFError, OSError):
+            if intento == 4:
+                sys.exit(
+                    f"El archivo {etiqueta} está dañado o abierto en Excel. "
+                    f"Cierra Excel y vuelve a intentarlo.\nRuta: {path}"
+                )
+            time.sleep(1)
+
 
 MORADO = PatternFill("solid", fgColor="800080")
 BLANCO = Font(color="FFFFFF", bold=True)
@@ -73,7 +94,13 @@ def copiar_rfoa(wb, ws_prev):
     if not RFOA.is_file():
         print(f"    [AVISO] No existe {RFOA.name}; se omite RFOA SIN PREVISION.")
         return
-    origen = openpyxl.load_workbook(RFOA, data_only=True)
+    try:
+        origen = openpyxl.load_workbook(RFOA, data_only=True)
+    except (zipfile.BadZipFile, EOFError, OSError):
+        sys.exit(
+            "El archivo RFOA central está dañado o abierto en Excel. "
+            f"Cierra Excel y vuelve a intentarlo.\nRuta: {RFOA}"
+        )
     if "Nodos" not in origen.sheetnames:
         print("    [AVISO] El RFOA central no tiene hoja Nodos; se omite.")
         origen.close()
@@ -155,6 +182,8 @@ def main() -> None:
         sys.exit(f"No existe el PREVISIONES de origen: {PREV}")
     if not RFOA.is_file():
         sys.exit(f"No existe el RFOA central: {RFOA}")
+    _comprobar_xlsx(PREV, "PREVISIONES de origen")
+    _comprobar_xlsx(RFOA, "RFOA central")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(PREV, OUT)

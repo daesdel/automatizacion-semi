@@ -111,6 +111,8 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600,
         try:
             for linea in iter(proceso.stdout.readline, ""):
                 cola.put(linea)
+        except (ValueError, OSError):
+            pass
         finally:
             cola.put(None)
 
@@ -324,11 +326,13 @@ if pulsado:
                 f"--jira={ruta / 'JIRA con DR.xlsx'}",
                 f"--hoja={ruta / 'Hoja de cálculo sin título.xlsx'}",
                 f"--csv={ruta / 'MinisterioPowerBi.csv'}",
+                f"--datos={ruta}",
                 f"--jira-out={carpeta_salida / 'JIRA.xlsx'}",
                 f"--out={carpeta_salida}",
             ]
             jira_path = ruta / "JIRA con DR.xlsx"
             hoja_path = ruta / "Hoja de cálculo sin título.xlsx"
+            datos_path = ruta
             if anterior_local is not None:
                 cmd.append(f"--anterior={anterior_local}")
             if revision_local is not None:
@@ -359,6 +363,7 @@ if pulsado:
             ]
             jira_path = rutas["JIRA con DR.xlsx"]
             hoja_path = rutas["Hoja de cálculo sin título.xlsx"]
+            datos_path = BASE / "Nueva carpeta (2)"
             if up_anterior is not None:
                 cmd.append(f"--anterior={rutas['Seguimiento_Previsiones_Limpio_anterior.xlsx']}")
 
@@ -366,7 +371,7 @@ if pulsado:
         log = ejecutar_con_progreso(cmd, timeout=3600)
         datos = leer_salidas(carpeta_salida)
         datos.update({"elapsed": time.time() - t0, "log": log,
-                      "carpeta": str(carpeta_salida),
+                      "carpeta": str(carpeta_salida), "datos": str(datos_path),
                       "jira": str(jira_path), "hoja": str(hoja_path)})
         st.session_state.resultado = datos
 
@@ -444,7 +449,7 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
         # La auditoría necesita el JIRA.xlsx generado por la Fase 1
         jira_a = base_audit / "JIRA.xlsx"
         if not jira_a.is_file():
-            jira_a = BASE / "Nueva carpeta (2)" / "JIRA.xlsx"
+            jira_a = Path(res.get("datos") or (BASE / "Nueva carpeta (2)")) / "JIRA.xlsx"
         if not jira_a.is_file():
             jira_a = Path(res["jira"])
         hoja_a = Path(res["hoja"])
@@ -483,7 +488,8 @@ if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
     if base_f7 is None or not (base_f7 / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
         st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
     else:
-        rfoa = BASE / "Nueva carpeta (2)" / "Previsiones de RFOA_central.xlsx"
+        datos_f7 = Path(res.get("datos") or (BASE / "Nueva carpeta (2)"))
+        rfoa = datos_f7 / "Previsiones de RFOA_central.xlsx"
         salida_f7 = base_f7 / f"{date.today():%d%m%Y}_FICHERO.xlsx"
         cmd = [
             sys.executable, str(HERE / "fase7_fichero.py"),

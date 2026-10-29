@@ -55,7 +55,7 @@ def _arg_path(nombre: str, defecto: Path) -> Path:
     return defecto
 
 
-BASE_DIR = Path(__file__).parent.parent / "Nueva carpeta (2)"
+BASE_DIR = _arg_path("datos", Path(__file__).parent.parent / "Nueva carpeta (2)")
 FICHERO = _arg_path("seguimiento", BASE_DIR / "Seguimiento E2E VODAFONE.xlsx")
 JIRA_DR = _arg_path("jira", BASE_DIR / "JIRA con DR.xlsx")
 JIRA_OUT = _arg_path("jira-out", BASE_DIR / "JIRA.xlsx")

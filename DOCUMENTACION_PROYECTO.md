@@ -229,6 +229,11 @@ Ejecuta Fase 1, Fase 2 y Fase 5 en cadena:
    `seguimiento.xlsx`.
 5. **Resumen**: tiempos por fase, total y tres archivos generados.
 
+`main.py` acepta `--datos=CARPETA`: fija la carpeta de datos para los valores
+por defecto, el log `Carpeta de datos` y el `JIRA.xlsx` generado. La app le pasa
+exactamente la ruta escrita por el usuario, de modo que Fase 1, Fase 6 y Fase 7
+trabajan sobre esa misma carpeta.
+
 Garantías:
 - Si una fase falla, se detiene y **no lanza la siguiente**.
 - Si la fase fallida dejó una salida a medias, la elimina.
@@ -481,6 +486,10 @@ vivo, mensaje de éxito y descarga.
 - **DUPLICADOS**: detecta IRs repetidos en la columna A de PREVISIONES, pinta
   la celda de morado y lista TICKET/HOJA.
 
+Antes de abrir, `fase7_fichero.py` valida que PREVISIONES y el RFOA central son
+ZIP/XLSX válidos, con reintentos si el archivo se está escribiendo. Si están
+dañados o abiertos en Excel, muestra un error amigable y no un Traceback.
+
 La app incorpora **📁 Generar Fichero (Fase 7)** con cronómetro, barra de
 progreso, consola en vivo y descarga del FICHERO.
 
@@ -527,9 +536,11 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   7.649/7.649 IR conservados (`validar_irs`).
 - Pipeline completo Fases 1+2+5: 67,89 s (9,99 + 8,11 + 49,80) y tres
   archivos generados, incluido el legal fechado `26102026_legal ministerio.xlsx`.
-- Streamlit en modo carpeta local: 138,4 s el pipeline + 32,1 s la Fase 7,
-  4 descargas (incluida `27102026_FICHERO.xlsx`), sin errores.
+- Streamlit en modo carpeta local: 136,8 s el pipeline + 32,7 s la Fase 7,
+  4 descargas (incluida `29102026_FICHERO.xlsx`), sin errores.
+- `Carpeta de datos` del log = ruta exacta de la app (`/tmp/semi_test`).
 - Auditoría: 21,1 s con descarga independiente.
+- Fase 7 con RFOA corrupto: error amigable, sin Traceback.
 - Fase 7: 27,9 s por CLI; 3 hojas, 41 filas RFOA visibles, 0 duplicados.
 - Fase 6 con `JIRA.xlsx` correcto: 7.162 huérfanos; con archivo equivocado
   muestra error amigable, sin Traceback.

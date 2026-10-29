@@ -36,7 +36,6 @@ for _stream in (sys.stdout, sys.stderr):
 
 HERE = Path(__file__).resolve().parent
 BASE = HERE.parent
-DATA = BASE / "Nueva carpeta (2)"
 
 
 def _arg_path(nombre: str, defecto: Path) -> Path:
@@ -48,6 +47,7 @@ def _arg_path(nombre: str, defecto: Path) -> Path:
     return defecto
 
 
+DATA = _arg_path("datos", BASE / "Nueva carpeta (2)")
 OUT_DIR = _arg_path("out", DATA / "resultados")
 
 FASE1 = HERE / "fase1_seguimiento.py"
@@ -191,6 +191,7 @@ def main() -> int:
         f"--seguimiento={ENTRADAS['Seguimiento E2E']}",
         f"--jira={ENTRADAS['JIRA con DR']}",
         f"--hoja={ENTRADAS['Hoja sin título']}",
+        f"--datos={DATA}",
         f"--jira-out={JIRA_EXPORT}",
         f"--out={OUT_DIR}",
     ]
