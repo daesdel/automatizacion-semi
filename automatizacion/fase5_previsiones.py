@@ -230,6 +230,10 @@ def calcular_manual(ir: str, jmap: dict, tx: dict, act: dict):
     nombres = []
     for campo, patron, nombre, _ in ESCENARIOS:
         texto = g if campo == "G" else e
+        if nombre == "JUMPING" and any(_coincide(p, g) for p in
+                                       ("*portadoras) 5G 7*", "*portadoras) 5g 37*",
+                                        "*portadoras*18*", "*4g*")):
+            continue
         if _coincide(patron, texto) and nombre not in nombres:
             nombres.append(nombre)
     h = " + ".join(nombres) if nombres else e
@@ -431,14 +435,19 @@ def escribir_leg_wn(wb, ws_origen, fmt_fecha, fmt_cab) -> None:
 # ----------------------------------------------------------------------
 # ZOOM
 # ----------------------------------------------------------------------
-def _criterios_base(campo: str, f_patron: int) -> str:
-    return (f"'PREVISIONES JUAN'!${campo}:${campo},$B${f_patron},"
+def _criterios_base(campo: str, f_patron: int, nombre: str = "") -> str:
+    base = (f"'PREVISIONES JUAN'!${campo}:${campo},$B${f_patron},"
             f"'PREVISIONES JUAN'!$T:$T,\">0\","
             f"'PREVISIONES JUAN'!$N:$N,\"<>RIP\"")
+    if nombre == "JUMPING":
+        for pat in ("*portadoras) 5G 7*", "*portadoras) 5g 37*",
+                    "*portadoras*18*", "*4g*"):
+            base += f",'PREVISIONES JUAN'!$G:$G,\"<>{pat}\""
+    return base
 
 
-def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str) -> str:
-    base = _criterios_base(campo, f_patron)
+def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str, nombre: str = "") -> str:
+    base = _criterios_base(campo, f_patron, nombre)
     rango = (f"'PREVISIONES JUAN'!$AV:$AV,\">=\"&{col}{f_fechas},"
              f"'PREVISIONES JUAN'!$AV:$AV,\"<=\"&({col}{f_fechas}+6)")
     partes = [f"COUNTIFS({base},{rango},'PREVISIONES JUAN'!$AU:$AU,\"{au}\")"
@@ -446,17 +455,17 @@ def _f_semana(campo: str, f_patron: int, f_fechas: int, col: str) -> str:
     return "=" + "+".join(partes)
 
 
-def _f_mas5(campo: str, f_patron: int, f_fechas: int) -> str:
-    base = _criterios_base(campo, f_patron)
+def _f_mas5(campo: str, f_patron: int, f_fechas: int, nombre: str = "") -> str:
+    base = _criterios_base(campo, f_patron, nombre)
     limite = f"F{f_fechas}+6"
     partes = [f"COUNTIFS({base},'PREVISIONES JUAN'!$AV:$AV,\">\"&{limite},"
               f"'PREVISIONES JUAN'!$AU:$AU,\"{au}\")" for au in ("", "-")]
     return "=" + "+".join(partes)
 
 
-def _f_no_plan(campo: str, f_patron: int, f_inicio: int) -> str:
+def _f_no_plan(campo: str, f_patron: int, f_inicio: int, nombre: str = "") -> str:
     """No planificada: sin AV, o AV anterior al lunes actual; y sin AU."""
-    base = _criterios_base(campo, f_patron)
+    base = _criterios_base(campo, f_patron, nombre)
     partes = []
     for av in ("", "-"):
         for au in ("", "-"):
@@ -545,17 +554,17 @@ def escribir_zoom(wb) -> None:
             col = get_column_letter(k + 1)
             ws.write_formula(
                 fila_datos, k,
-                _f_semana(campo, fila_patron + 1, fila_fechas + 1, col),
+                _f_semana(campo, fila_patron + 1, fila_fechas + 1, col, nombre),
                 f_num,
             )
         ws.write_formula(
             fila_datos, 6,
-            _f_no_plan(campo, fila_patron + 1, fila_fechas + 1),
+            _f_no_plan(campo, fila_patron + 1, fila_fechas + 1, nombre),
             f_num,
         )
         ws.write_formula(
             fila_datos, 7,
-            _f_mas5(campo, fila_patron + 1, fila_fechas + 1),
+            _f_mas5(campo, fila_patron + 1, fila_fechas + 1, nombre),
             f_num,
         )
         ws.write_formula(
@@ -619,6 +628,10 @@ def escribir_detalle(wb, jmap: dict, fmt_fecha, fmt_cab) -> None:
         nombres = []
         for campo, patron, nombre, _ in ESCENARIOS:
             texto = g if campo == "G" else e
+            if nombre == "JUMPING" and any(_coincide(p, g) for p in
+                                           ("*portadoras) 5G 7*", "*portadoras) 5g 37*",
+                                            "*portadoras*18*", "*4g*")):
+                continue
             if _coincide(patron, texto) and nombre not in nombres:
                 nombres.append(nombre)
         datos = [" + ".join(nombres), ir, _semana_txt(d.get("av"), d.get("au"), lunes),

@@ -721,13 +721,19 @@ def main() -> None:
 
     t0 = time.time()
     salida = OUT_DIR / "seguimiento.xlsx"
-    # Escritura en streaming real (escritura secuencial, memoria constante).
-    wb = openpyxl.Workbook(write_only=True)
-    ws = wb.create_sheet(HOJA_NS)
-    ws.append(list(df_out.columns))
+    # Copia el libro original como plantilla para conservar formatos,
+    # anchos, bordes y formato condicional de NUEVO SEGUIMIENTO.
+    wb = openpyxl.load_workbook(FICHERO)
+    for nombre in list(wb.sheetnames):
+        if nombre != HOJA_NS:
+            wb.remove(wb[nombre])
+    ws = wb[HOJA_NS]
     limpio = df_out.astype(object).where(pd.notna(df_out), None)
-    for fila in limpio.itertuples(index=False, name=None):
-        ws.append(fila)
+    for r, fila in enumerate(limpio.itertuples(index=False, name=None), start=2):
+        for c, valor in enumerate(fila, start=1):
+            ws.cell(row=r, column=c, value=valor)
+    if ws.max_row > len(df_out) + 1:
+        ws.delete_rows(len(df_out) + 2, ws.max_row - (len(df_out) + 1))
     wb.save(salida)
     validar_irs(df_ns, df_out)
     print(f"\n[5] Escrito {salida.name}: {salida.stat().st_size / 1e6:.2f} MB "

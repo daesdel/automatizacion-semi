@@ -193,7 +193,29 @@ def generar_duplicados(wb, ws_prev):
             ws_d.cell(row=f, column=1, value=v)
             ws_d.cell(row=f, column=2, value="PREVISIONES JUAN")
             f += 1
-    print(f"    DUPLICADOS: {len(dup):,} IRs repetidos ({f - 2:,} filas)")
+
+    # Duplicados de filas completas en RFOA SIN PREVISION
+    if "RFOA SIN PREVISION" in wb.sheetnames:
+        wr = wb["RFOA SIN PREVISION"]
+        firmas = {}
+        for r in range(2, wr.max_row + 1):
+            fila = tuple(wr.cell(row=r, column=c).value
+                         for c in range(1, wr.max_column + 1))
+            if any(v not in (None, "") for v in fila):
+                firmas.setdefault(fila, []).append(r)
+        for fila, filas_dup in firmas.items():
+            if len(filas_dup) < 2:
+                continue
+            for r in filas_dup:
+                for c in range(1, wr.max_column + 1):
+                    wr.cell(row=r, column=c).fill = MORADO
+                    wr.cell(row=r, column=c).font = BLANCO
+                primer = next((v for v in fila if v not in (None, "")), f"fila {r}")
+                ws_d.cell(row=f, column=1, value=primer)
+                ws_d.cell(row=f, column=2, value="RFOA SIN PREVISION")
+                f += 1
+
+    print(f"    DUPLICADOS: {f - 2:,} filas marcadas")
 
 
 def main() -> None:

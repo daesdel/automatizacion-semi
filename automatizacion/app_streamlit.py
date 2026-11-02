@@ -59,6 +59,14 @@ st.set_page_config(page_title="Automatización de Informes SEMI",
                    page_icon="📊", layout="wide")
 
 st.title("📊 Automatización de Informes SEMI")
+if st.session_state.get("job"):
+    _render_job()
+    st.stop()
+
+_err = st.session_state.pop("job_error", None)
+if _err:
+    st.warning(_err)
+
 st.write(
     "Puedes indicar una **carpeta local** con los archivos (recomendado en "
     "Windows, evita subir ~100 MB) o subirlos aquí. Se ejecutarán las "
@@ -203,6 +211,120 @@ def ejecutar_con_progreso(cmd: list, timeout: int = 3600,
         except Exception:
             pass
     return "\n".join(lineas)
+
+
+def _iniciar_job(cmd, tipo, carpeta, extra=None):
+    proc = subprocess.Popen(
+        cmd, cwd=str(BASE), env=entorno_hijos(),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    cola = queue.Queue()
+
+    def lector():
+        try:
+            for linea in iter(proc.stdout.readline, ""):
+                cola.put(linea)
+        except (ValueError, OSError):
+            pass
+        finally:
+            cola.put(None)
+
+    threading.Thread(target=lector, daemon=True).start()
+    st.session_state.job = {
+        "proc": proc, "cola": cola, "lineas": [], "inicio": time.time(),
+        "inicio_dt": datetime.now(), "tipo": tipo, "carpeta": str(carpeta),
+        "extra": extra or {}, "fin": False, "error": None, "avance": 0,
+    }
+    st.rerun()
+
+
+@st.fragment(run_every=1.0)
+def _render_job():
+    job = st.session_state.get("job")
+    if not job:
+        return
+    proc, cola = job["proc"], job["cola"]
+    while True:
+        try:
+            linea = cola.get_nowait()
+        except queue.Empty:
+            break
+        if linea is None:
+            job["fin"] = True
+            break
+        linea = linea.rstrip()
+        if linea:
+            job["lineas"].append(linea)
+
+    lineas = job["lineas"]
+    if job["tipo"] == "pipeline":
+        if any("FASE 5" in l for l in lineas):
+            job["avance"] = max(job["avance"], 60)
+        elif any("FASE 2" in l for l in lineas):
+            job["avance"] = max(job["avance"], 35)
+        elif any("FASE 1" in l for l in lineas):
+            job["avance"] = max(job["avance"], 5)
+        if any("[OK] Proceso completado" in l for l in lineas):
+            job["avance"] = 99
+    else:
+        job["avance"] = min(95, job["avance"] + 2)
+
+    trans = time.time() - job["inicio"]
+    st.subheader("⏳ " + ("Pipeline" if job["tipo"] == "pipeline"
+                          else "Auditoría" if job["tipo"] == "auditoria"
+                          else "Fase 7"))
+    st.markdown(
+        f"**Inicio:** {job['inicio_dt']:%d/%m/%Y %H:%M:%S}  ·  "
+        f"**Transcurrido:** {int(trans // 60):02d}:{int(trans % 60):02d}"
+    )
+    st.progress(min(job["avance"], 99), text=lineas[-1][:120] if lineas else "Iniciando...")
+    if lineas:
+        st.code("\n".join(lineas[-14:]), language="text")
+
+    if st.button("🛑 Detener Proceso", type="secondary", width="stretch"):
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        st.session_state.job = None
+        st.session_state.job_error = "Proceso detenido por el usuario."
+        st.rerun(scope="app")
+
+    if proc.poll() is not None and (job["fin"] or cola.empty()):
+        if proc.returncode not in (0, None):
+            st.session_state.job_error = (
+                "El proceso terminó con errores (código "
+                f"{proc.returncode}). Revisa la consola."
+            )
+        elif job["tipo"] == "pipeline":
+            carpeta = Path(job["carpeta"])
+            try:
+                datos = leer_salidas(carpeta)
+                datos.update({"elapsed": trans, "log": "\n".join(lineas),
+                              "carpeta": str(carpeta),
+                              "datos": job["extra"].get("datos"),
+                              "jira": job["extra"].get("jira"),
+                              "hoja": job["extra"].get("hoja")})
+                st.session_state.resultado = datos
+                if job["extra"].get("limpiar"):
+                    limpiar_subidas()
+            except Exception as e:  # noqa: BLE001
+                st.session_state.job_error = str(e)
+        elif job["tipo"] == "auditoria":
+            f = Path(job["carpeta"]) / "Auditoria_Tickets_Faltantes.xlsx"
+            if f.is_file():
+                st.session_state.audit_result = (f.name, f.read_bytes())
+            else:
+                st.session_state.job_error = "No se generó la auditoría."
+        else:
+            f = Path(job["extra"]["out"])
+            if f.is_file():
+                st.session_state.f7_result = (f.name, f.read_bytes())
+            else:
+                st.session_state.job_error = "No se generó el FICHERO."
+        st.session_state.job = None
+        st.rerun(scope="app")
 
 
 def leer_salidas(carpeta: Path) -> dict:
@@ -367,13 +489,10 @@ if pulsado:
             if up_anterior is not None:
                 cmd.append(f"--anterior={rutas['Seguimiento_Previsiones_Limpio_anterior.xlsx']}")
 
-        t0 = time.time()
-        log = ejecutar_con_progreso(cmd, timeout=3600)
-        datos = leer_salidas(carpeta_salida)
-        datos.update({"elapsed": time.time() - t0, "log": log,
-                      "carpeta": str(carpeta_salida), "datos": str(datos_path),
-                      "jira": str(jira_path), "hoja": str(hoja_path)})
-        st.session_state.resultado = datos
+        _iniciar_job(cmd, "pipeline", carpeta_salida, {
+            "datos": str(datos_path), "jira": str(jira_path),
+            "hoja": str(hoja_path), "limpiar": limpiar,
+        })
 
     except TimeoutError as e:
         error = str(e)
@@ -442,19 +561,19 @@ st.caption(
 # ----------------------------------------------------------------------
 st.subheader("4 · Auditoría de tickets")
 if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
-    base_audit = Path(res["carpeta"]) if res else None
+    st.session_state.audit_result = None
+    base_audit = Path(res["carpeta"]) if res else (
+        ruta / "resultados_app" if modo_ruta else None)
     if base_audit is None or not (base_audit / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
-        st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
+        st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
+                   "carpeta con resultados_app completo.")
     else:
-        # La auditoría necesita el JIRA.xlsx generado por la Fase 1
+        datos_base = Path(res.get("datos")) if res else (
+            ruta if modo_ruta else BASE / "Nueva carpeta (2)")
         jira_a = base_audit / "JIRA.xlsx"
         if not jira_a.is_file():
-            jira_a = Path(res.get("datos") or (BASE / "Nueva carpeta (2)")) / "JIRA.xlsx"
-        if not jira_a.is_file():
-            jira_a = Path(res["jira"])
-        hoja_a = Path(res["hoja"])
-        if not hoja_a.is_file():
-            hoja_a = BASE / "Nueva carpeta (2)" / "Hoja de cálculo sin título.xlsx"
+            jira_a = datos_base / "JIRA.xlsx"
+        hoja_a = datos_base / "Hoja de cálculo sin título.xlsx"
         salida_audit = base_audit / "Auditoria_Tickets_Faltantes.xlsx"
         cmd = [
             sys.executable, str(HERE / "fase6_auditoria.py"),
@@ -463,33 +582,35 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
             f"--prev={base_audit / 'Seguimiento_Previsiones_Limpio.xlsx'}",
             f"--out={salida_audit}",
         ]
-        try:
-            log = ejecutar_con_progreso(cmd, timeout=900, auditoria=True)
-            if not salida_audit.is_file():
-                raise RuntimeError("La auditoría terminó sin generar el archivo.")
-            st.success("Auditoría completada.")
-            st.download_button(
-                "⬇️ Auditoria_Tickets_Faltantes.xlsx",
-                data=salida_audit.read_bytes(),
-                file_name="Auditoria_Tickets_Faltantes.xlsx",
-                mime=MIME_XLSX, width="stretch", key="dl_audit",
-            )
-            with st.expander("Ver consola de la auditoría"):
-                st.code(log, language="text")
-        except Exception as e:
-            st.error(f"La auditoría falló: {e}")
+        _iniciar_job(cmd, "auditoria", base_audit)
+
+ares = st.session_state.get("audit_result")
+if ares:
+    st.success("Auditoría completada.")
+    st.download_button(f"⬇️ {ares[0]}", data=ares[1], file_name=ares[0],
+                       mime=MIME_XLSX, width="stretch", key="dl_audit")
 
 # ----------------------------------------------------------------------
 # 5 · Fichero de trabajo (Fase 7)
 # ----------------------------------------------------------------------
 st.subheader("5 · Fichero de trabajo (Fase 7)")
+rfoa_txt = st.text_input(
+    "Ruta de Previsiones de RFOA_central.xlsx (opcional)",
+    placeholder=r"C:\...\Previsiones de RFOA_central.xlsx",
+    help="Si se deja vacío, se busca en la carpeta de datos de la Fase 1.",
+)
 if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
-    base_f7 = Path(res["carpeta"]) if res else None
+    st.session_state.f7_result = None
+    base_f7 = Path(res["carpeta"]) if res else (
+        ruta / "resultados_app" if modo_ruta else None)
     if base_f7 is None or not (base_f7 / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
-        st.warning("Ejecuta primero el pipeline para tener un PREVISIONES actual.")
+        st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
+                   "carpeta con resultados_app completo.")
     else:
-        datos_f7 = Path(res.get("datos") or (BASE / "Nueva carpeta (2)"))
-        rfoa = datos_f7 / "Previsiones de RFOA_central.xlsx"
+        datos_f7 = Path(res.get("datos")) if res else (
+            ruta if modo_ruta else BASE / "Nueva carpeta (2)")
+        rfoa = (Path(rfoa_txt.strip()).expanduser() if rfoa_txt.strip()
+                else datos_f7 / "Previsiones de RFOA_central.xlsx")
         salida_f7 = base_f7 / f"{date.today():%d%m%Y}_FICHERO.xlsx"
         cmd = [
             sys.executable, str(HERE / "fase7_fichero.py"),
@@ -497,18 +618,10 @@ if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
             f"--rfoa={rfoa}",
             f"--out={salida_f7}",
         ]
-        try:
-            log = ejecutar_con_progreso(cmd, timeout=900, auditoria=True)
-            if not salida_f7.is_file():
-                raise RuntimeError("La Fase 7 terminó sin generar el FICHERO.")
-            st.success("Fichero generado.")
-            st.download_button(
-                f"⬇️ {salida_f7.name}",
-                data=salida_f7.read_bytes(),
-                file_name=salida_f7.name,
-                mime=MIME_XLSX, width="stretch", key="dl_f7",
-            )
-            with st.expander("Ver consola de la Fase 7"):
-                st.code(log, language="text")
-        except Exception as e:
-            st.error(f"La Fase 7 falló: {e}")
+        _iniciar_job(cmd, "fase7", base_f7, {"out": str(salida_f7)})
+
+f7res = st.session_state.get("f7_result")
+if f7res:
+    st.success("Fichero generado.")
+    st.download_button(f"⬇️ {f7res[0]}", data=f7res[1], file_name=f7res[0],
+                       mime=MIME_XLSX, width="stretch", key="dl_f7")
