@@ -59,14 +59,6 @@ st.set_page_config(page_title="Automatización de Informes SEMI",
                    page_icon="📊", layout="wide")
 
 st.title("📊 Automatización de Informes SEMI")
-if st.session_state.get("job"):
-    _render_job()
-    st.stop()
-
-_err = st.session_state.pop("job_error", None)
-if _err:
-    st.warning(_err)
-
 st.write(
     "Puedes indicar una **carpeta local** con los archivos (recomendado en "
     "Windows, evita subir ~100 MB) o subirlos aquí. Se ejecutarán las "
@@ -348,6 +340,14 @@ def leer_salidas(carpeta: Path) -> dict:
 # ----------------------------------------------------------------------
 # 1 · Origen de los datos
 # ----------------------------------------------------------------------
+if st.session_state.get("job"):
+    _render_job()
+    st.stop()
+
+_err = st.session_state.pop("job_error", None)
+if _err:
+    st.warning(_err)
+
 st.subheader("1 · Origen de los datos")
 ruta_texto = st.text_input(
     "Ruta local de la carpeta de trabajo (opcional)",
