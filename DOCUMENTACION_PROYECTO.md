@@ -272,14 +272,18 @@ En ambos modos:
 - Botón **🚀 Ejecutar Proceso**.
 - Botón **🛑 Detener Proceso** mientras hay una ejecución: mata el proceso hijo
   y deja la app operativa.
+- **Registro persistente** en `st.session_state`: Pipeline, Auditoría y Fase 7
+  guardan su consola y se puede consultar en un expander aunque cambies de
+  sección o recargues.
 - **Cronómetro** con fecha/hora de inicio y tiempo transcurrido.
 - **Barra de progreso real** por fases (1, 2 y 5).
 - **Consola en vivo** con las últimas líneas de `print`.
 - Botón **🔎 Ejecutar Auditoría de Tickets** (Fase 6).
 - Botón **📁 Generar Fichero (Fase 7)**, con campo opcional para la ruta de
   `Previsiones de RFOA_central.xlsx`.
-- Fases 6 y 7 se pueden lanzar **sin pipeline previo** si existe una carpeta
-  `resultados_app` con los archivos de una ejecución anterior.
+- Fases 6 y 7 se pueden lanzar **sin pipeline previo**: buscan
+  `Seguimiento_Previsiones_Limpio.xlsx` en `resultados_app`, en la carpeta de
+  datos, en `resultados` o en `subidas/resultados_app`.
 - Ejecuta **`main.py`** (Fases 1 + 2 + 5).
 - Salida leída **en tiempo real** con `Popen` + cola y `PYTHONUNBUFFERED=1`
   (evita el bloqueo del buffer en Windows), con `st.status`, `st.progress` y
@@ -492,7 +496,9 @@ vivo, mensaje de éxito y descarga.
   `tbl_RFOA_SIN_PREVISION`.
 - **DUPLICADOS**: detecta IRs repetidos en PREVISIONES (columna A) y filas
   idénticas en RFOA SIN PREVISION; pinta de morado y lista TICKET/HOJA.
-- Los encabezados de RFOA SIN PREVISION se fuerzan a **texto negro**.
+- Los encabezados de RFOA SIN PREVISION se fuerzan a **Calibri 11 negrita,
+  color negro RGB `FF000000` y fondo blanco** (sin estilo de tabla que los
+  vuelva a pintar de blanco).
 
 Antes de abrir, `fase7_fichero.py` valida que PREVISIONES y el RFOA central son
 ZIP/XLSX válidos, con reintentos si el archivo se está escribiendo. Si están
@@ -603,8 +609,9 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 - Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles,
   **7.162 huérfanos** la primera vez y **0 nuevos** al repetir (incremental).
 - Fase 7: 3 hojas con valores, sin fórmulas ni hojas ocultas (1,55 MB).
-- Fase 1 conserva formatos del E2E original: 8.194 filas, 5,70 MB, 28,3 s;
-  ancho de columna A y relleno de B2 idénticos al original.
+- Fase 1 usa xlsxwriter con formatos por columna (cabecera/dato) del E2E
+  original: archivo válido, 8.194 filas, 5,29 MB, 23 s. Se evita el guardado
+  openpyxl que corrompía el libro.
 - pycel: bloque de 50 filas calculado en 8,7 s; H2 coincide con el valor de
   Excel (`Capacidad (Interna) 5G 700;NR700 EA`).
 - RFOA SIN PREVISION: 41 filas visibles y estilos clonados de `Nodos`.

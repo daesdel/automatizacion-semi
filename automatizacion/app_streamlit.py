@@ -289,7 +289,11 @@ def _render_job():
                 "El proceso terminó con errores (código "
                 f"{proc.returncode}). Revisa la consola."
             )
-        elif job["tipo"] == "pipeline":
+        logtxt = "\n".join(lineas)
+        st.session_state.setdefault("logs", {})[
+            {"pipeline": "Pipeline", "auditoria": "Auditoría",
+             "fase7": "Fase 7"}.get(job["tipo"], job["tipo"])] = logtxt
+        if job["tipo"] == "pipeline":
             carpeta = Path(job["carpeta"])
             try:
                 datos = leer_salidas(carpeta)
@@ -318,6 +322,22 @@ def _render_job():
         st.session_state.job = None
         st.rerun(scope="app")
 
+
+
+def _buscar_prev():
+    """Carpeta con Seguimiento_Previsiones_Limpio.xlsx de una ejecución previa."""
+    candidatas = []
+    if res:
+        candidatas.append(Path(res["carpeta"]))
+    if modo_ruta:
+        candidatas += [ruta / "resultados_app", ruta, ruta / "resultados"]
+    candidatas += [SUBIDAS / "resultados_app",
+                   BASE / "Nueva carpeta (2)" / "resultados",
+                   BASE / "Nueva carpeta (2)"]
+    for c in candidatas:
+        if (c / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+            return c
+    return None
 
 def leer_salidas(carpeta: Path) -> dict:
     legales = sorted(carpeta.glob("*_legal ministerio.xlsx"),
@@ -562,8 +582,7 @@ st.caption(
 st.subheader("4 · Auditoría de tickets")
 if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
     st.session_state.audit_result = None
-    base_audit = Path(res["carpeta"]) if res else (
-        ruta / "resultados_app" if modo_ruta else None)
+    base_audit = _buscar_prev()
     if base_audit is None or not (base_audit / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
         st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
                    "carpeta con resultados_app completo.")
@@ -601,8 +620,7 @@ rfoa_txt = st.text_input(
 )
 if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
     st.session_state.f7_result = None
-    base_f7 = Path(res["carpeta"]) if res else (
-        ruta / "resultados_app" if modo_ruta else None)
+    base_f7 = _buscar_prev()
     if base_f7 is None or not (base_f7 / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
         st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
                    "carpeta con resultados_app completo.")
@@ -625,3 +643,13 @@ if f7res:
     st.success("Fichero generado.")
     st.download_button(f"⬇️ {f7res[0]}", data=f7res[1], file_name=f7res[0],
                        mime=MIME_XLSX, width="stretch", key="dl_f7")
+
+# ----------------------------------------------------------------------
+# Registro persistente
+# ----------------------------------------------------------------------
+logs = st.session_state.get("logs", {})
+if logs:
+    with st.expander("Registro de ejecución (persistente)", expanded=False):
+        cual = st.selectbox("Ejecución", list(logs.keys()),
+                            index=len(logs) - 1, key="sel_log")
+        st.code(logs[cual], language="text")

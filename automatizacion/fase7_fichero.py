@@ -153,16 +153,13 @@ def copiar_rfoa(wb, ws_prev):
         if alto:
             ws.row_dimensions[r - min_row + 1].height = alto
 
-    if filas:
-        ref = f"A1:{get_column_letter(len(filas[0]))}{len(filas)}"
-        try:
-            t = Table(displayName="tbl_RFOA_SIN_PREVISION", ref=ref)
-            estilo = getattr(getattr(tabla, "tableStyleInfo", None), "name", None)
-            t.tableStyleInfo = TableStyleInfo(
-                name=estilo or "TableStyleMedium2", showRowStripes=True)
-            ws.add_table(t)
-        except Exception as e:  # noqa: BLE001
-            print(f"    [AVISO] No se pudo crear la tabla RFOA: {e}")
+    for c in range(1, len(filas[0]) + 1):
+        celda = ws.cell(row=1, column=c)
+        celda.font = Font(name="Calibri", size=11, bold=True,
+                          color="FF000000")
+        celda.fill = PatternFill("solid", fgColor="FFFFFFFF")
+        celda.alignment = Alignment(horizontal="center", vertical="center")
+
     print(f"    RFOA SIN PREVISION: {len(filas) - 1:,} filas visibles")
     origen.close()
 

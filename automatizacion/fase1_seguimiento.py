@@ -665,6 +665,56 @@ def validar(orig: pd.DataFrame, nuevo: pd.DataFrame) -> None:
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
+
+def _color_xl(c):
+    rgb = getattr(c, "rgb", None)
+    if not isinstance(rgb, str) or not rgb or rgb in ("00000000", "None"):
+        return None
+    return "#" + str(rgb)[-6:]
+
+
+def _formato_xlsxwriter(wb, celda):
+    """Convierte el estilo estático de una celda openpyxl a xlsxwriter."""
+    f = celda.font
+    fill = celda.fill
+    b = celda.border
+    al = celda.alignment
+    op = {
+        "font_name": f.name or "Calibri",
+        "font_size": f.size or 11,
+        "bold": bool(f.bold),
+        "italic": bool(f.italic),
+        "underline": bool(f.underline),
+        "font_strikeout": bool(f.strike),
+        "text_wrap": bool(al.wrap_text),
+        "align": al.horizontal or "left",
+        "valign": al.vertical or "vcenter",
+        "num_format": celda.number_format or "General",
+    }
+    col = _color_xl(f.color)
+    if col:
+        op["font_color"] = col
+    if getattr(fill, "patternType", None) == "solid":
+        bg = _color_xl(fill.fgColor)
+        if bg:
+            op["bg_color"] = bg
+            op["pattern"] = 1
+    estilos_borde = {"thin": 1, "medium": 2, "dashed": 3, "dotted": 4,
+                     "thick": 5, "double": 6, "hair": 7,
+                     "mediumDashed": 8, "dashDot": 9,
+                     "mediumDashDot": 10, "dashDotDot": 11,
+                     "mediumDashDotDot": 12, "slantDashDot": 13}
+    for lado in ("left", "right", "top", "bottom"):
+        side = getattr(b, lado, None)
+        if side and side.style:
+            op[lado] = estilos_borde.get(side.style, 1)
+            c = _color_xl(side.color)
+            if c:
+                op[f"{lado}_color"] = c
+    if al.text_rotation:
+        op["rotation"] = int(al.text_rotation)
+    return wb.add_format(op)
+
 def validar_irs(df_in: pd.DataFrame, df_out: pd.DataFrame) -> None:
     """Comprueba que no se ha perdido ninguna clave entre origen y salida."""
     def claves(df):
@@ -721,20 +771,40 @@ def main() -> None:
 
     t0 = time.time()
     salida = OUT_DIR / "seguimiento.xlsx"
-    # Copia el libro original como plantilla para conservar formatos,
-    # anchos, bordes y formato condicional de NUEVO SEGUIMIENTO.
-    wb = openpyxl.load_workbook(FICHERO)
-    for nombre in list(wb.sheetnames):
-        if nombre != HOJA_NS:
-            wb.remove(wb[nombre])
-    ws = wb[HOJA_NS]
+    # xlsxwriter + estilos estáticos originales: archivo válido y formato.
+    wb_o = openpyxl.load_workbook(FICHERO)
+    ws_o = wb_o[HOJA_NS]
+    wb = xlsxwriter.Workbook(str(salida), {"constant_memory": True,
+                                           "strings_to_numbers": False})
+    ws = wb.add_worksheet(HOJA_NS)
+    for letra, dim in ws_o.column_dimensions.items():
+        if dim.width:
+            idx = column_index_from_string(letra) - 1
+            ws.set_column(idx, idx, dim.width)
+    if ws_o.row_dimensions[1].height:
+        ws.set_row(0, ws_o.row_dimensions[1].height)
+    if ws_o.freeze_panes:
+        ws.freeze_panes(ws_o.freeze_panes)
+
+    fmt_cab = [_formato_xlsxwriter(wb, ws_o.cell(row=1, column=c))
+               for c in range(1, len(df_out.columns) + 1)]
+    fmt_dat = [_formato_xlsxwriter(wb, ws_o.cell(row=2, column=c))
+               for c in range(1, len(df_out.columns) + 1)]
+
     limpio = df_out.astype(object).where(pd.notna(df_out), None)
-    for r, fila in enumerate(limpio.itertuples(index=False, name=None), start=2):
+    for r, fila in enumerate(limpio.itertuples(index=False, name=None), start=1):
         for c, valor in enumerate(fila, start=1):
-            ws.cell(row=r, column=c, value=valor)
-    if ws.max_row > len(df_out) + 1:
-        ws.delete_rows(len(df_out) + 2, ws.max_row - (len(df_out) + 1))
-    wb.save(salida)
+            f = fmt_cab[c - 1] if r == 1 else fmt_dat[c - 1]
+            if isinstance(valor, str):
+                ws.write_string(r - 1, c - 1, valor, f)
+            elif isinstance(valor, (datetime, date)):
+                ws.write_datetime(r - 1, c - 1, valor, f)
+            elif valor is None:
+                ws.write_blank(r - 1, c - 1, None, f)
+            else:
+                ws.write(r - 1, c - 1, valor, f)
+    wb.close()
+    wb_o.close()
     validar_irs(df_ns, df_out)
     print(f"\n[5] Escrito {salida.name}: {salida.stat().st_size / 1e6:.2f} MB "
           f"({time.time() - t0:.2f}s)")
