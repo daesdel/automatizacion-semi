@@ -270,9 +270,10 @@ las fórmulas de PREVISIONES JUAN. Si no se aporta, se genera desde cero
 En ambos modos:
 
 - Botón **🚀 Ejecutar Proceso**.
-- **Sanity check** antes del pipeline: compara los tickets de JIRA/Hoja 2 con
-  el DATA IN del archivo anterior. Si bajan, muestra el aviso y exige
-  confirmación para continuar.
+- **Sanity check en segundo plano**: un proceso independiente
+  (`sanity_tickets.py`) cuenta JIRA/Hoja 2 y compara con el DATA IN anterior.
+  La UI muestra barra, consola y botón de parada; si baja, aparece el aviso con
+  **Sí, continuar / Cancelar**. Nunca bloquea la interfaz.
 - Botón **🛑 Detener Proceso** mientras hay una ejecución: mata el proceso hijo
   y deja la app operativa.
 - **Registro persistente** en `st.session_state`: Pipeline, Auditoría y Fase 7

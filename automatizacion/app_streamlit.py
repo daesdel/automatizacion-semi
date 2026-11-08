@@ -18,6 +18,7 @@ Arranque:
     PYTHONPATH=/tmp/my_py python3 -m streamlit run automatizacion/app_streamlit.py
 """
 
+import json
 import os
 import queue
 import shutil
@@ -294,7 +295,25 @@ def _render_job():
         st.session_state.setdefault("logs", {})[
             {"pipeline": "Pipeline", "auditoria": "Auditoría",
              "fase7": "Fase 7"}.get(job["tipo"], job["tipo"])] = logtxt
-        if job["tipo"] == "pipeline":
+        if job["tipo"] == "sanity":
+            try:
+                datos_s = json.loads(Path(job["extra"]["sanity_out"]).read_text())
+            except Exception as e:  # noqa: BLE001
+                st.session_state.job_error = f"No se pudo leer el sanity check: {e}"
+            else:
+                if datos_s.get("bajada"):
+                    st.session_state.sanity_pending = {
+                        "anterior": datos_s["anterior"],
+                        "actual": datos_s["actual"],
+                        "cmd": job["extra"]["pipeline_cmd"],
+                        "carpeta": job["carpeta"],
+                        "extra": job["extra"]["pipeline_extra"],
+                    }
+                else:
+                    _iniciar_job(job["extra"]["pipeline_cmd"], "pipeline",
+                                 Path(job["carpeta"]),
+                                 job["extra"]["pipeline_extra"])
+        elif job["tipo"] == "pipeline":
             carpeta = Path(job["carpeta"])
             try:
                 datos = leer_salidas(carpeta)
@@ -565,14 +584,18 @@ if pulsado:
 
         extra = {"datos": str(datos_path), "jira": str(jira_path),
                  "hoja": str(hoja_path), "limpiar": limpiar}
-        aviso = _sanity_tickets(jira_path, hoja_path)
-        if aviso:
-            st.session_state.sanity_pending = {
-                "anterior": aviso[0], "actual": aviso[1],
-                "cmd": cmd, "carpeta": str(carpeta_salida), "extra": extra,
-            }
-            st.rerun()
-        _iniciar_job(cmd, "pipeline", carpeta_salida, extra)
+        prev = _buscar_prev()
+        sanity_out = SUBIDAS / "sanity.json"
+        cmd_sanity = [
+            sys.executable, str(HERE / "sanity_tickets.py"),
+            f"--jira={jira_path}", f"--hoja={hoja_path}",
+            f"--prev={prev / 'Seguimiento_Previsiones_Limpio.xlsx' if prev else ''}",
+            f"--out={sanity_out}",
+        ]
+        _iniciar_job(cmd_sanity, "sanity", carpeta_salida, {
+            "pipeline_cmd": cmd, "pipeline_extra": extra,
+            "sanity_out": str(sanity_out),
+        })
 
     except TimeoutError as e:
         error = str(e)
