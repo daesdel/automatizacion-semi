@@ -810,31 +810,12 @@ def main() -> None:
 
     if "--sin-recalcular" not in sys.argv:
         if recalcular_con_excel(DESTINO):
-            convertir_a_valores(DESTINO)
-            print("    Recalculado con Excel y convertido a valores")
+            print("    Recalculado con Excel: fórmulas y cachés conservadas")
         else:
             print("    Aviso: En Mac el cálculo de fórmulas es extremadamente "
                   "lento. Se recomienda usar Windows para generar el FICHERO final.")
-            print("    Sin Excel: calculando valores con pycel por bloques...")
-            try:
-                from calc_pycel import calcular_valores
-                vals = calcular_valores(
-                    DESTINO,
-                    progreso=lambda hechas, total: print(
-                        f"      pycel: {hechas}/{total} filas", end="\r"),
-                )
-                print()
-                wb_val = openpyxl.load_workbook(DESTINO)
-                ws_val = wb_val["PREVISIONES JUAN"]
-                for (fila, col), valor in vals.items():
-                    ws_val.cell(row=fila, column=col, value=valor)
-                wb_val.save(DESTINO)
-                wb_val.close()
-                print("    Calculado con pycel y convertido a valores")
-            except Exception as e:  # noqa: BLE001
-                print(f"    [AVISO] No se pudo calcular con pycel: {e}")
-                print("    Se conservan las fórmulas; instala pycel: "
-                      "py -m pip install pycel")
+            print("    Sin Excel: se conservan las fórmulas; Fase 7 las "
+                  "convertirá a valores en el FICHERO")
 
     tam = DESTINO.stat().st_size / 1e6
     print("\n" + "=" * 70)

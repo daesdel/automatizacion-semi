@@ -270,6 +270,9 @@ las fórmulas de PREVISIONES JUAN. Si no se aporta, se genera desde cero
 En ambos modos:
 
 - Botón **🚀 Ejecutar Proceso**.
+- **Sanity check** antes del pipeline: compara los tickets de JIRA/Hoja 2 con
+  el DATA IN del archivo anterior. Si bajan, muestra el aviso y exige
+  confirmación para continuar.
 - Botón **🛑 Detener Proceso** mientras hay una ejecución: mata el proceso hijo
   y deja la app operativa.
 - **Registro persistente** en `st.session_state`: Pipeline, Auditoría y Fase 7
@@ -522,7 +525,9 @@ La Fase 5 intenta recalcular en **Windows con Excel COM**:
 
 1. Abre el libro en una instancia invisible de Excel.
 2. `CalculateFullRebuild()` + guardar.
-3. Convierte las fórmulas a valores.
+3. **Conserva las fórmulas vivas** y solo deja los valores en caché. El libro
+   intermedio (`Seguimiento_Previsiones_Limpio.xlsx`) mantiene fórmulas en
+   PREVISIONES JUAN y ZOOM para poder heredarlas la semana siguiente.
 
 Si no hay Excel (Mac, pywin32 ausente, Excel ocupado), **no se usa
 LibreOffice**. Se usa **pycel 1.0b30** por bloques de 50 filas
@@ -534,10 +539,10 @@ LibreOffice**. Se usa **pycel 1.0b30** por bloques de 50 filas
   Python 3.15/openpyxl.
 - Calcula celda a celda y sustituye las fórmulas por valores.
 
-La Fase 7 garantiza **siempre 3 hojas** (`PREVISIONES JUAN`,
-`RFOA SIN PREVISION`, `DUPLICADOS`), **sin fórmulas ni hojas ocultas**.
-Si al abrir el FICHERO quedasen fórmulas, Fase 7 vuelve a calcularlas con
-pycel antes de montar la salida.
+La Fase 7 es la **única** que convierte fórmulas a valores: usa las cachés de
+Excel si existen y, solo si faltan, recurre a pycel. Garantiza **siempre 3
+hojas** (`PREVISIONES JUAN`, `RFOA SIN PREVISION`, `DUPLICADOS`), sin fórmulas
+ni hojas ocultas.
 
 Dependencias en Mac/Windows sin Excel:
 
@@ -608,7 +613,9 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
   informada y RIP; H/AB/AJ recalculadas en todas las filas.
 - Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles,
   **7.162 huérfanos** la primera vez y **0 nuevos** al repetir (incremental).
-- Fase 7: 3 hojas con valores, sin fórmulas ni hojas ocultas (1,55 MB).
+- Fase 5: PREVISIONES y ZOOM conservan sus fórmulas (verificado C2/O2/B8).
+- Fase 7: 3 hojas con valores, sin fórmulas ni hojas ocultas (1,55 MB, 31 s
+  usando cachés de Excel). RFOA A1 con color negro `FF000000` y fondo blanco.
 - Fase 1 usa xlsxwriter con formatos por columna (cabecera/dato) del E2E
   original: archivo válido, 8.194 filas, 5,29 MB, 23 s. Se evita el guardado
   openpyxl que corrompía el libro.

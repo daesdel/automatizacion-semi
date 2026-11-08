@@ -28,6 +28,7 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
+import openpyxl
 import streamlit as st
 
 HERE = Path(__file__).resolve().parent
@@ -339,6 +340,40 @@ def _buscar_prev():
             return c
     return None
 
+
+def _contar_col(path, hoja, col, filas_cabecera=1):
+    if not path or not Path(path).is_file():
+        return None
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        if hoja not in wb.sheetnames:
+            wb.close()
+            return None
+        ws = wb[hoja]
+        n = sum(1 for f in ws.iter_rows(min_row=filas_cabecera + 1,
+                                        min_col=col, max_col=col,
+                                        values_only=True)
+                if f[0] not in (None, ""))
+        wb.close()
+        return n
+    except Exception:
+        return None
+
+
+def _sanity_tickets(jira, hoja):
+    """Devuelve (anterior, actual) si el recuento ha bajado."""
+    base = _buscar_prev()
+    if base is None:
+        return None
+    anterior = _contar_col(base / "Seguimiento_Previsiones_Limpio.xlsx",
+                           "DATA IN", 1, filas_cabecera=2)
+    j = _contar_col(jira, "Hoja 1", 2)
+    h = _contar_col(hoja, "Hoja 2", 1)
+    actual = max([x for x in (j, h) if x is not None], default=None)
+    if anterior and actual is not None and actual < anterior:
+        return anterior, actual
+    return None
+
 def leer_salidas(carpeta: Path) -> dict:
     legales = sorted(carpeta.glob("*_legal ministerio.xlsx"),
                      key=lambda p: p.stat().st_mtime)
@@ -367,6 +402,24 @@ if st.session_state.get("job"):
 _err = st.session_state.pop("job_error", None)
 if _err:
     st.warning(_err)
+
+_pend = st.session_state.get("sanity_pending")
+if _pend:
+    st.warning(
+        f"Atención: el número de tickets ha bajado de {_pend['anterior']:,} "
+        f"a {_pend['actual']:,}. ¿Seguro que los archivos de Jira son correctos?"
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("✅ Sí, continuar", type="primary", width="stretch"):
+            st.session_state.pop("sanity_pending", None)
+            _iniciar_job(_pend["cmd"], "pipeline", Path(_pend["carpeta"]),
+                         _pend["extra"])
+    with c2:
+        if st.button("❌ Cancelar", width="stretch"):
+            st.session_state.pop("sanity_pending", None)
+            st.rerun()
+    st.stop()
 
 st.subheader("1 · Origen de los datos")
 ruta_texto = st.text_input(
@@ -509,10 +562,16 @@ if pulsado:
             if up_anterior is not None:
                 cmd.append(f"--anterior={rutas['Seguimiento_Previsiones_Limpio_anterior.xlsx']}")
 
-        _iniciar_job(cmd, "pipeline", carpeta_salida, {
-            "datos": str(datos_path), "jira": str(jira_path),
-            "hoja": str(hoja_path), "limpiar": limpiar,
-        })
+        extra = {"datos": str(datos_path), "jira": str(jira_path),
+                 "hoja": str(hoja_path), "limpiar": limpiar}
+        aviso = _sanity_tickets(jira_path, hoja_path)
+        if aviso:
+            st.session_state.sanity_pending = {
+                "anterior": aviso[0], "actual": aviso[1],
+                "cmd": cmd, "carpeta": str(carpeta_salida), "extra": extra,
+            }
+            st.rerun()
+        _iniciar_job(cmd, "pipeline", carpeta_salida, extra)
 
     except TimeoutError as e:
         error = str(e)

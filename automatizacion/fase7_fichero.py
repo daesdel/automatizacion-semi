@@ -241,17 +241,34 @@ def main() -> None:
         for fila in ws_tmp.iter_rows(min_row=2) for c in fila
     )
     if hay_formulas:
-        print("    Aviso: En Mac el cálculo de fórmulas es extremadamente lento. "
-              "Se recomienda usar Windows para generar el FICHERO final.")
-        print("    PREVISIONES con fórmulas: calculando con pycel...")
-        wb.close(); wv.close()
-        try:
-            from calc_pycel import convertir_a_valores
-            convertir_a_valores(OUT)
-        except Exception as e:  # noqa: BLE001
-            sys.exit(f"No se pudieron calcular las fórmulas con pycel: {e}")
-        wb = openpyxl.load_workbook(OUT)
-        wv = openpyxl.load_workbook(PREV, data_only=True)
+        total = faltan = 0
+        for fila in ws_tmp.iter_rows(min_row=2):
+            for c in fila:
+                if isinstance(c.value, ArrayFormula) or (
+                        isinstance(c.value, str) and c.value.startswith("=")):
+                    total += 1
+                    if wv["PREVISIONES JUAN"][c.coordinate].value in (None, ""):
+                        faltan += 1
+        if total and faltan / total > 0.5:
+            print("    Aviso: En Mac el cálculo de fórmulas es extremadamente lento. "
+                  "Se recomienda usar Windows para generar el FICHERO final.")
+            print("    Sin cachés: calculando con pycel...")
+            wb.close(); wv.close()
+            try:
+                from calc_pycel import convertir_a_valores
+                convertir_a_valores(OUT)
+            except Exception as e:  # noqa: BLE001
+                sys.exit(f"No se pudieron calcular las fórmulas con pycel: {e}")
+            wb = openpyxl.load_workbook(OUT)
+            wv = openpyxl.load_workbook(PREV, data_only=True)
+        else:
+            print("    Usando valores cacheados de Excel (sin recalcular)")
+            ws = wb["PREVISIONES JUAN"]
+            for fila in ws.iter_rows(min_row=2):
+                for c in fila:
+                    if isinstance(c.value, ArrayFormula) or (
+                            isinstance(c.value, str) and c.value.startswith("=")):
+                        c.value = wv["PREVISIONES JUAN"][c.coordinate].value
 
     ws_prev = copiar_previsiones(wb, wv)
     copiar_rfoa(wb, ws_prev)
