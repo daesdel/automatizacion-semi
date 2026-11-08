@@ -328,8 +328,9 @@ def _render_job():
 def _buscar_prev():
     """Carpeta con Seguimiento_Previsiones_Limpio.xlsx de una ejecución previa."""
     candidatas = []
-    if res:
-        candidatas.append(Path(res["carpeta"]))
+    actual = st.session_state.get("resultado")
+    if actual:
+        candidatas.append(Path(actual["carpeta"]))
     if modo_ruta:
         candidatas += [ruta / "resultados_app", ruta, ruta / "resultados"]
     candidatas += [SUBIDAS / "resultados_app",
