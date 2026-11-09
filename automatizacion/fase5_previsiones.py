@@ -89,6 +89,11 @@ ESCENARIOS = [
 ]
 
 
+SIN_ESCENARIO = ("", "", "SIN ESCENARIO",
+                 "Tickets que no pertenecen a ninguno de los 6 escenarios")
+ESCENARIOS_ZOOM = ESCENARIOS + [SIN_ESCENARIO]
+
+
 def _coincide(patron: str, texto: str) -> bool:
     """Comodín simple: *a*b* -> todas las partes presentes."""
     partes = [p for p in patron.strip("*").lower().split("*") if p]
@@ -438,9 +443,16 @@ def escribir_leg_wn(wb, ws_origen, fmt_fecha, fmt_cab) -> None:
 # ZOOM
 # ----------------------------------------------------------------------
 def _criterios_base(campo: str, f_patron: int, nombre: str = "") -> str:
-    base = (f"'PREVISIONES JUAN'!${campo}:${campo},$B${f_patron},"
-            f"'PREVISIONES JUAN'!$T:$T,\">0\","
+    base = (f"'PREVISIONES JUAN'!$T:$T,\">0\","
             f"'PREVISIONES JUAN'!$N:$N,\"<>RIP\"")
+    if nombre == "SIN ESCENARIO":
+        for pat in ("*portadoras) 5G 7*", "*portadoras) 5g 37*",
+                    "*portadoras*18*", "*4g*"):
+            base += f",'PREVISIONES JUAN'!$G:$G,\"<>{pat}\""
+        base += (",'PREVISIONES JUAN'!$E:$E,\"<>*upgrade*\""
+                 ",'PREVISIONES JUAN'!$E:$E,\"<>*jumping*\"")
+        return base
+    base = (f"'PREVISIONES JUAN'!${campo}:${campo},$B${f_patron}," + base)
     if nombre == "JUMPING":
         for pat in ("*portadoras) 5G 7*", "*portadoras) 5g 37*",
                     "*portadoras*18*", "*4g*"):
@@ -516,7 +528,7 @@ def escribir_zoom(wb) -> None:
     )
 
     fila = 3
-    for campo, patron, nombre, descripcion in ESCENARIOS:
+    for campo, patron, nombre, descripcion in ESCENARIOS_ZOOM:
         ws.merge_range(fila, 0, fila, 8, nombre, f_esc)
 
         fila_patron = fila + 1
@@ -577,7 +589,7 @@ def escribir_zoom(wb) -> None:
         )
         fila += 6
 
-    print("    ZOOM: 6 escenarios")
+    print("    ZOOM: 7 escenarios")
 
 
 # ----------------------------------------------------------------------

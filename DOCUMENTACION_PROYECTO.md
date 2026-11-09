@@ -393,6 +393,7 @@ libro original):
 | 4 | Proyectos Radio (G) | `*4g*` |
 | 5 | Proyecto & Subproyecto (E) | `*upgrade*` |
 | 6 | Proyecto & Subproyecto (E) | `*jumping*` |
+| 7 | Inverso de 1–6 | **SIN ESCENARIO** |
 
 - 5 semanas dinámicas (lunes actual + 4) + No planificada + **> 5 sem** + Total.
 - Cabeceras **`WXX_AAAA`** con `WEEKNUM(fecha,21)` (semana ISO) y año ISO.
@@ -401,6 +402,10 @@ libro original):
 - **Exclusión**: no se cuentan tickets con Fecha Real RFOA (AU) informada.
 - **JUMPING** excluye los tickets que pertenecen a PORTADORAS 5G700, 5G3700,
   5G1800 o 4G.
+- **SIN ESCENARIO** (séptimo cuadro, al final): cuenta los tickets con Fecha PO
+  > 0 que **no** cumplen ninguno de los 6 escenarios. Se implementa con
+  `COUNTIFS` y exclusiones `<>` sobre G (cuatro patrones de portadoras) y E
+  (`upgrade`, `jumping`), manteniendo semanas, No planificada, > 5 sem y Total.
 - **Ejecutadas antes**: si la Fecha RFOA real (AU) es anterior al lunes actual,
   la incidencia **no** cuenta como planificada en ninguna semana (aunque su
   Previsión RFOA sea de esta semana o futura). Si AU es de esta semana, sí
@@ -628,7 +633,8 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 - pycel: bloque de 50 filas calculado en 8,7 s; H2 coincide con el valor de
   Excel (`Capacidad (Interna) 5G 700;NR700 EA`).
 - RFOA SIN PREVISION: 41 filas visibles y estilos clonados de `Nodos`.
-- ZOOM: cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de ejecutadas antes.
+- ZOOM: 7 cuadros, cabeceras `WXX_AAAA`, columna `> 5 sem`, exclusión de
+  ejecutadas antes y cuadro final SIN ESCENARIO.
 - DETALLE_TICKETS visible, una fila por IR (9.721) y escenarios concatenados.
 - Sin plantilla: PREVISIONES se hereda del archivo de la semana anterior.
 - Git: repositorio actualizado; ver el último commit en `git log`.
