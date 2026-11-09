@@ -260,14 +260,27 @@ def escribir_previsiones(wb, headers, previas, irs, calc) -> None:
         if h not in (None, ""):
             ws.write_string(0, c - 1, str(h), cab.get(c))
 
-    last_row = len(previas) + 1  # fila Excel de la última fila anterior
+    # Plantilla por columna: primera fórmula encontrada de abajo arriba.
     plantillas = {}
-    if previas:
-        ultima = previas[-1]
-        for c in range(1, 88):
-            v = ultima[c - 1] if c - 1 < len(ultima) else None
+    for c in range(1, 88):
+        for idx in range(len(previas) - 1, -1, -1):
+            v = previas[idx][c - 1] if c - 1 < len(previas[idx]) else None
             if isinstance(v, ArrayFormula) or (isinstance(v, str) and v.startswith("=")):
-                plantillas[c] = v
+                plantillas[c] = (v, idx + 2)
+                break
+
+    def escribir_formula(i, c, fmt):
+        v, origen = plantillas[c]
+        txt = v.text if isinstance(v, ArrayFormula) else v
+        col = get_column_letter(c)
+        try:
+            txt = Translator(txt, origin=f"{col}{origen}").translate_formula(f"{col}{i}")
+        except Exception:
+            pass
+        if isinstance(v, ArrayFormula):
+            ws.write_array_formula(i - 1, c - 1, i - 1, c - 1, txt, fmt)
+        else:
+            ws.write_formula(i - 1, c - 1, txt, fmt)
 
     filas = 1
     for i, ir in enumerate(irs, start=2):
@@ -280,23 +293,12 @@ def escribir_previsiones(wb, headers, previas, irs, calc) -> None:
                 h, ab, aj = calc.get(ir, ("", "Sin IR", "N/A"))
                 valor = {"h": h, "ab": ab, "aj": aj}[MANUAL[c]]
                 volcar(ws, i - 1, c - 1, valor, fmt)
-            elif src is not None:
-                v = src[c - 1] if c - 1 < len(src) else None
-                if v != "AUTO":
+            else:
+                v = src[c - 1] if src is not None and c - 1 < len(src) else None
+                if v not in (None, "", "AUTO"):
                     volcar(ws, i - 1, c - 1, v, fmt)
-            elif c in plantillas:
-                v = plantillas[c]
-                txt = v.text if isinstance(v, ArrayFormula) else v
-                col = get_column_letter(c)
-                try:
-                    txt = Translator(txt, origin=f"{col}{last_row}").translate_formula(
-                        f"{col}{i}")
-                except Exception:
-                    pass
-                if isinstance(v, ArrayFormula):
-                    ws.write_array_formula(i - 1, c - 1, i - 1, c - 1, txt, fmt)
-                else:
-                    ws.write_formula(i - 1, c - 1, txt, fmt)
+                elif c in plantillas:
+                    escribir_formula(i, c, fmt)
         filas += 1
 
     verde = wb.add_format({"bg_color": "#92D050"})

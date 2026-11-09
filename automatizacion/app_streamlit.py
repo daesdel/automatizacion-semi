@@ -265,9 +265,11 @@ def _render_job():
         job["avance"] = min(95, job["avance"] + 2)
 
     trans = time.time() - job["inicio"]
-    st.subheader("⏳ " + ("Pipeline" if job["tipo"] == "pipeline"
-                          else "Auditoría" if job["tipo"] == "auditoria"
-                          else "Fase 7"))
+    st.subheader("⏳ " + (
+        "Pipeline (Fases 1, 2 y 5)" if job["tipo"] == "pipeline"
+        else "Auditoría de tickets" if job["tipo"] == "auditoria"
+        else "Comprobando integridad de los archivos" if job["tipo"] == "sanity"
+        else "Fichero (Fase 7)"))
     st.markdown(
         f"**Inicio:** {job['inicio_dt']:%d/%m/%Y %H:%M:%S}  ·  "
         f"**Transcurrido:** {int(trans // 60):02d}:{int(trans % 60):02d}"
@@ -292,9 +294,11 @@ def _render_job():
                 f"{proc.returncode}). Revisa la consola."
             )
         logtxt = "\n".join(lineas)
-        st.session_state.setdefault("logs", {})[
-            {"pipeline": "Pipeline", "auditoria": "Auditoría",
-             "fase7": "Fase 7"}.get(job["tipo"], job["tipo"])] = logtxt
+        nombre_log = {"pipeline": "Pipeline", "auditoria": "Auditoría",
+                      "fase7": "Fase 7", "sanity": "Sanity"}.get(
+                          job["tipo"], job["tipo"])
+        etiqueta = f"{nombre_log} · {job['inicio_dt']:%d/%m %H:%M}"
+        st.session_state.setdefault("logs", {})[etiqueta] = logtxt
         if job["tipo"] == "sanity":
             try:
                 datos_s = json.loads(Path(job["extra"]["sanity_out"]).read_text())
@@ -733,6 +737,7 @@ if f7res:
 logs = st.session_state.get("logs", {})
 if logs:
     with st.expander("Registro de ejecución (persistente)", expanded=False):
-        cual = st.selectbox("Ejecución", list(logs.keys()),
-                            index=len(logs) - 1, key="sel_log")
-        st.code(logs[cual], language="text")
+        tabs = st.tabs(list(logs.keys()))
+        for tab, (nombre, texto) in zip(tabs, logs.items()):
+            with tab:
+                st.code(texto, language="text")

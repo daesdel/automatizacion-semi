@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-import openpyxl
+from python_calamine import CalamineWorkbook
 
 
 def _arg(nombre, defecto=None):
@@ -30,19 +30,15 @@ OUT = _arg("out")
 
 
 def contar(path, hoja, col, cabecera=1):
+    """Cuenta filas con clave usando calamine (rápido, sin abrir Excel)."""
     if not path or not path.is_file():
         return None
     try:
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        if hoja not in wb.sheetnames:
-            wb.close()
-            return None
-        ws = wb[hoja]
-        n = sum(1 for fila in ws.iter_rows(min_row=cabecera + 1,
-                                           min_col=col, max_col=col,
-                                           values_only=True)
-                if fila[0] not in (None, ""))
-        wb.close()
+        wb = CalamineWorkbook.from_path(str(path))
+        ws = wb.get_sheet_by_name(hoja)
+        filas = ws.to_python(skip_empty_area=True)
+        n = sum(1 for fila in filas[cabecera:]
+                if len(fila) >= col and fila[col - 1] not in (None, ""))
         return n
     except Exception as e:  # noqa: BLE001
         print(f"  [AVISO] No se pudo contar {path.name}/{hoja}: {e}")

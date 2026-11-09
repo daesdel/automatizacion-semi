@@ -270,15 +270,17 @@ las fórmulas de PREVISIONES JUAN. Si no se aporta, se genera desde cero
 En ambos modos:
 
 - Botón **🚀 Ejecutar Proceso**.
-- **Sanity check en segundo plano**: un proceso independiente
-  (`sanity_tickets.py`) cuenta JIRA/Hoja 2 y compara con el DATA IN anterior.
+- **Sanity check en segundo plano con python-calamine**: un proceso
+  independiente (`sanity_tickets.py`) cuenta JIRA/Hoja 2 en ~8 s y compara con
+  el DATA IN anterior.
   La UI muestra barra, consola y botón de parada; si baja, aparece el aviso con
-  **Sí, continuar / Cancelar**. Nunca bloquea la interfaz.
+  **Sí, continuar / Cancelar**. Nunca bloquea la interfaz. Si `python-calamine`
+  no está instalado, la lectura vuelve a openpyxl y se vuelve lenta.
 - Botón **🛑 Detener Proceso** mientras hay una ejecución: mata el proceso hijo
   y deja la app operativa.
-- **Registro persistente** en `st.session_state`: Pipeline, Auditoría y Fase 7
-  guardan su consola y se puede consultar en un expander aunque cambies de
-  sección o recargues.
+- **Registro persistente** en `st.session_state`: Pipeline, Auditoría, Sanity
+  y Fase 7 se acumulan con hora y se muestran en pestañas dentro de un
+  expander. El título del pipeline es **“Pipeline (Fases 1, 2 y 5)”**.
 - **Cronómetro** con fecha/hora de inicio y tiempo transcurrido.
 - **Barra de progreso real** por fases (1, 2 y 5).
 - **Consola en vivo** con las últimas líneas de `print`.
@@ -615,6 +617,9 @@ La primera apertura recalcula las fórmulas de PREVISIONES JUAN.
 - Fase 6: auditoría afinada a IR de radio con actividad; 10.844 elegibles,
   **7.162 huérfanos** la primera vez y **0 nuevos** al repetir (incremental).
 - Fase 5: PREVISIONES y ZOOM conservan sus fórmulas (verificado C2/O2/B8).
+- Fase 5 rellena con Translator las fórmulas que falten en filas antiguas,
+  no solo en las nuevas.
+- Sanity con calamine: 8,2 s para JIRA + Hoja + DATA IN.
 - Fase 7: 3 hojas con valores, sin fórmulas ni hojas ocultas (1,55 MB, 31 s
   usando cachés de Excel). RFOA A1 con color negro `FF000000` y fondo blanco.
 - Fase 1 usa xlsxwriter con formatos por columna (cabecera/dato) del E2E
