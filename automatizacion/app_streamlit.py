@@ -269,7 +269,8 @@ def _render_job():
         "Pipeline (Fases 1, 2 y 5)" if job["tipo"] == "pipeline"
         else "Auditoría de tickets" if job["tipo"] == "auditoria"
         else "Comprobando integridad de los archivos" if job["tipo"] == "sanity"
-        else "Fichero (Fase 7)"))
+        else "Fichero (Fase 7)" if job["tipo"] == "fase7"
+        else "Adicionales (Fase 8)"))
     st.markdown(
         f"**Inicio:** {job['inicio_dt']:%d/%m/%Y %H:%M:%S}  ·  "
         f"**Transcurrido:** {int(trans // 60):02d}:{int(trans % 60):02d}"
@@ -295,7 +296,8 @@ def _render_job():
             )
         logtxt = "\n".join(lineas)
         nombre_log = {"pipeline": "Pipeline", "auditoria": "Auditoría",
-                      "fase7": "Fase 7", "sanity": "Sanity"}.get(
+                      "fase7": "Fase 7", "fase8": "Fase 8",
+                      "sanity": "Sanity"}.get(
                           job["tipo"], job["tipo"])
         etiqueta = f"{nombre_log} · {job['inicio_dt']:%d/%m %H:%M}"
         st.session_state.setdefault("logs", {})[etiqueta] = logtxt
@@ -331,6 +333,12 @@ def _render_job():
                     limpiar_subidas()
             except Exception as e:  # noqa: BLE001
                 st.session_state.job_error = str(e)
+        elif job["tipo"] == "fase8":
+            f = Path(job["extra"]["ad"])
+            if f.is_file():
+                st.session_state.f8_result = (f.name, f.read_bytes())
+            else:
+                st.session_state.job_error = "No se generó el Adicionales."
         elif job["tipo"] == "auditoria":
             f = Path(job["carpeta"]) / "Auditoria_Tickets_Faltantes.xlsx"
             if f.is_file():
@@ -730,6 +738,33 @@ if f7res:
     st.success("Fichero generado.")
     st.download_button(f"⬇️ {f7res[0]}", data=f7res[1], file_name=f7res[0],
                        mime=MIME_XLSX, width="stretch", key="dl_f7")
+
+# ----------------------------------------------------------------------
+# 6 · Adicionales (Fase 8)
+# ----------------------------------------------------------------------
+st.subheader("6 · Adicionales (Fase 8)")
+if st.button("📝 Actualizar Adicionales (Fase 8)", width="stretch"):
+    st.session_state.f8_result = None
+    datos_f8 = ruta if modo_ruta else BASE / "Nueva carpeta (2)"
+    ad = datos_f8 / "ADICIONALES SEGUIMIENTO.xlsx"
+    jira_f8 = datos_f8 / "JIRA.xlsx"
+    backup = datos_f8 / "ADICIONALES SEGUIMIENTO_WN-1.xlsx"
+    if not ad.is_file() or not jira_f8.is_file():
+        st.warning("Faltan ADICIONALES SEGUIMIENTO.xlsx o JIRA.xlsx en la "
+                   "carpeta de datos.")
+    else:
+        cmd = [
+            sys.executable, str(HERE / "fase8_adicionales.py"),
+            f"--adicionales={ad}", f"--jira={jira_f8}", f"--backup={backup}",
+        ]
+        _iniciar_job(cmd, "fase8", datos_f8, {"ad": str(ad)})
+
+f8res = st.session_state.get("f8_result")
+if f8res:
+    st.success("Adicionales actualizado.")
+    st.download_button(f"⬇️ {f8res[0]}", data=f8res[1], file_name=f8res[0],
+                       mime=MIME_XLSX, width="stretch", key="dl_f8")
+
 
 # ----------------------------------------------------------------------
 # Registro persistente

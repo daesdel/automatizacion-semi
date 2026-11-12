@@ -76,6 +76,50 @@ Proyectos del resumen: Plan Capacidad - Upgrade, Traslado, JUMPING - Capacidad r
 
 
 
-## 8.6 Pendiente
+## 8.6 Implementación (`fase8_adicionales.py`)
 
-La lógica de actualización de la Fase 8 se implementará cuando el usuario la confirme.
+1. **Foto fija**: si no existe `ADICIONALES SEGUIMIENTO_WN-1.xlsx`, copia el
+   libro actual. Si existe, no se toca.
+2. **DATA IN**: vuelca `JIRA.xlsx` (`IR_VDF`, desde la fila 5) en
+   `DATA IN!A3`, limpiando antes las filas antiguas.
+3. **Rango 2 (`I3:N24`)**: copia las 6 primeras columnas del Rango 3 de la
+   foto fija (`Q:V`). La columna `W` (Real RFOA) no cabe en `I:N`; si se
+   necesitara, habría que ampliar el rango a `O`.
+4. **Rango 1 (`B3:G24`)**: tickets del DATA IN con `Prevision RFOA` (AD) en la
+   semana **N-1**, excluyendo los IR ya escritos en el Rango 2. La última
+   columna es `Real RFOA` (K).
+5. **Rango 3 (`Q3:W24`)**: tickets con `Prevision RFOA` en la semana **N**;
+   se rellenan también Prev RFOA y Real RFOA.
+6. **Rango 4 (`Y3:AD24`)**: tickets con `Prevision RFOA` en la semana **N+1**.
+7. **Resumen**: las fórmulas `COUNTIFS`/`SUMPRODUCT` de `AG2:AM16` se
+   mantienen; usan columnas completas o rangos hasta la fila 1998, por lo que
+   siguen contando si se añaden filas.
+8. Si hay más de 22 tickets en un rango, se insertan filas a partir de la 25
+   y se desplazan KO/re-planificación y listas auxiliares.
+
+La columna PIVOTE se escribe siempre como `RFOA`.
+
+### Ejecución en Windows (producción)
+
+```bat
+py automatizacion\fase8_adicionales.py
+```
+
+Usa Excel COM: actualiza DATA IN y Planificación conservando gráficos.
+
+### Prueba en Mac
+
+Mac no tiene Excel COM; se usa openpyxl, que puede tardar y **perder
+gráficos**. No se debe ejecutar sobre el archivo original. Prueba segura:
+
+```bash
+cp "Nueva carpeta (2)/ADICIONALES SEGUIMIENTO.xlsx" /tmp/ADICIONALES_TEST.xlsx
+python automatizacion/fase8_adicionales.py \
+  --adicionales=/tmp/ADICIONALES_TEST.xlsx \
+  --backup=/tmp/ADICIONALES_TEST_WN-1.xlsx \
+  --jira="Nueva carpeta (2)/JIRA.xlsx" \
+  --dry-run
+```
+
+El `--dry-run` calcula y muestra R1/R2/R3/R4 sin escribir. Para probar la
+escritura, quita `--dry-run` y revisa las hojas del archivo de `/tmp`.
