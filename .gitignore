@@ -4,3 +4,4 @@
 !.gitignore
 !DOCUMENTACION_PROYECTO.md
 !automatizacion/*.py
+!FASE_*.md
