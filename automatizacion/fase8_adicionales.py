@@ -103,7 +103,7 @@ def leer_jira():
 
 
 def leer_rango2(backup: Path):
-    """Copia Q:V del Rango 3 de la foto fija (6 columnas)."""
+    """Copia Q:W del Rango 3 de la foto fija (7 columnas, con Real RFOA)."""
     wb = openpyxl.load_workbook(backup, read_only=True, data_only=True)
     ws = wb[HOJA_PLAN]
     salida = []
@@ -118,6 +118,7 @@ def leer_rango2(backup: Path):
             "RFOA",
             ws.cell(row=r, column=21).value,  # U
             ws.cell(row=r, column=22).value,  # V Prevision RFOA
+            ws.cell(row=r, column=23).value,  # W Real RFOA
         ])
     wb.close()
     return salida
@@ -177,12 +178,12 @@ def actualizar_excel(r1, r3, r4, rango2, jira_filas):
                 wp.Range(f"{col}{FILA_DATOS}:{col}{fin}").ClearContents()
 
         limpiar(["B", "C", "D", "E", "F", "G"])
-        limpiar(["I", "J", "K", "L", "M", "N"])
+        limpiar(["I", "J", "K", "L", "M", "N", "O"])
         limpiar(["Q", "R", "S", "T", "U", "V", "W"])
         limpiar(["Y", "Z", "AA", "AB", "AC", "AD"])
 
         bloques = [
-            ("B3", r1, 6), ("I3", rango2, 6), ("Q3", r3, 7), ("Y3", r4, 6),
+            ("B3", r1, 6), ("I3", rango2, 7), ("Q3", r3, 7), ("Y3", r4, 6),
         ]
         for celda, filas, ncols in bloques:
             if not filas:
@@ -224,7 +225,7 @@ def actualizar_openpyxl(r1, r3, r4, rango2, jira_filas):
     if extra:
         wp.insert_rows(25, extra)
     fin = FILA_FIN + extra
-    for cols in (("B", "G"), ("I", "N"), ("Q", "W"), ("Y", "AD")):
+    for cols in (("B", "G"), ("I", "O"), ("Q", "W"), ("Y", "AD")):
         for r in range(FILA_DATOS, fin + 1):
             for c in range(openpyxl.utils.column_index_from_string(cols[0]),
                            openpyxl.utils.column_index_from_string(cols[1]) + 1):
@@ -240,7 +241,7 @@ def actualizar_openpyxl(r1, r3, r4, rango2, jira_filas):
                         value=_normalizar(fila[j]) if j < len(fila) else None)
 
     escribir("B3", r1, 6)
-    escribir("I3", rango2, 6)
+    escribir("I3", rango2, 7)
     escribir("Q3", r3, 7)
     escribir("Y3", r4, 6)
     wb.save(ADICIONALES)

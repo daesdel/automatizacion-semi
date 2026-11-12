@@ -22,11 +22,20 @@ Cabecera de bloque en la fila 1, subcabecera en la fila 2 y datos desde la fila 
 | Rango | Celdas | Cabecera | Contenido |
 |---|---|---|---|
 | 1 | `B1:G24` | `SEMANA N-1 (no plan)` | Tickets con RFOA de la semana anterior que ya no están en el rango 2 |
-| 2 | `I1:N24` | `SEMANA N-1` | Tickets que la semana anterior tenían previsión de RFOA en esa semana |
+| 2 | `I1:O24` | `SEMANA N-1` | Tickets que la semana anterior tenían previsión de RFOA en esa semana |
 | 3 | `Q1:W24` | `SEMANA N` | Tickets que la semana anterior tenían previsión de RFOA en la semana actual |
 | 4 | `Y1:AD24` | `SEMANA N+1` | Tickets con previsión de RFOA la semana siguiente |
 
-Columnas de cada bloque: JIRA IR, SR, PROYECTO & SUBPROYECTO, PIVOTE, Proyectos Radio y fechas (Real RFOA / Prev RFOA según bloque).
+Estructura exacta:
+
+| Rango | Columnas | Campos |
+|---|---|---|
+| 1 | B:G | IR, SR, Proyecto & Subproyecto, PIVOTE, Proyectos Radio, Real RFOA |
+| 2 | I:O | IR, SR, Proyecto & Subproyecto, PIVOTE, Proyectos Radio, Prev RFOA, Real RFOA |
+| 3 | Q:W | IR, SR, Proyecto & Subproyecto, PIVOTE, Proyectos Radio, Prev RFOA, Real RFOA |
+| 4 | Y:AD | IR, SR, Proyecto & Subproyecto, PIVOTE, Proyectos Radio, Prev RFOA |
+
+`P` y `X` quedan vacías como separadores visuales.
 
 ## 8.3 Recuadro de resumen
 
@@ -82,15 +91,16 @@ Proyectos del resumen: Plan Capacidad - Upgrade, Traslado, JUMPING - Capacidad r
    libro actual. Si existe, no se toca.
 2. **DATA IN**: vuelca `JIRA.xlsx` (`IR_VDF`, desde la fila 5) en
    `DATA IN!A3`, limpiando antes las filas antiguas.
-3. **Rango 2 (`I3:N24`)**: copia las 6 primeras columnas del Rango 3 de la
-   foto fija (`Q:V`). La columna `W` (Real RFOA) no cabe en `I:N`; si se
-   necesitara, habría que ampliar el rango a `O`.
+3. **Rango 2 (`I3:O24`)**: copia las 7 columnas del Rango 3 de la foto fija
+   (`Q:W`), incluida **Real RFOA** en la columna `O`. La columna `P` queda
+   vacía como separador antes del Rango 3.
 4. **Rango 1 (`B3:G24`)**: tickets del DATA IN con `Prevision RFOA` (AD) en la
    semana **N-1**, excluyendo los IR ya escritos en el Rango 2. La última
    columna es `Real RFOA` (K).
 5. **Rango 3 (`Q3:W24`)**: tickets con `Prevision RFOA` en la semana **N**;
    se rellenan también Prev RFOA y Real RFOA.
 6. **Rango 4 (`Y3:AD24`)**: tickets con `Prevision RFOA` en la semana **N+1**.
+   La columna `X` queda vacía como separador antes del Rango 4.
 7. **Resumen**: las fórmulas `COUNTIFS`/`SUMPRODUCT` de `AG2:AM16` se
    mantienen; usan columnas completas o rangos hasta la fila 1998, por lo que
    siguen contando si se añaden filas.
