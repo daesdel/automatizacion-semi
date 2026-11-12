@@ -249,6 +249,35 @@ def actualizar_openpyxl(r1, r3, r4, rango2, jira_filas):
           f"R3={len(r3)}, R4={len(r4)}")
 
 
+
+def convertir_backup_valores(path: Path) -> None:
+    """Congela fórmulas de la foto fija con Excel COM (solo Windows)."""
+    if os.name != "nt":
+        return
+    try:
+        import pythoncom
+        import win32com.client as win32
+    except ImportError:
+        return
+    excel = None
+    try:
+        excel = win32.DispatchEx("Excel.Application")
+        excel.Visible = False
+        excel.DisplayAlerts = False
+        libro = excel.Workbooks.Open(str(path))
+        for hoja in libro.Worksheets:
+            usado = hoja.UsedRange
+            usado.Value = usado.Value
+        libro.Save()
+        libro.Close(SaveChanges=False)
+        print("  Foto fija convertida a valores")
+    except Exception as e:  # noqa: BLE001
+        print(f"  [AVISO] No se pudo congelar la foto fija: {e}")
+    finally:
+        if excel is not None:
+            excel.Quit()
+
+
 def main():
     print("=" * 70)
     print("  FASE 8 · Adicionales")
@@ -272,6 +301,7 @@ def main():
     if not BACKUP.is_file():
         shutil.copy2(ADICIONALES, BACKUP)
         print(f"  Foto fija creada: {BACKUP.name}")
+        convertir_backup_valores(BACKUP)
     else:
         print(f"  Foto fija existente: {BACKUP.name} (no se toca)")
 
