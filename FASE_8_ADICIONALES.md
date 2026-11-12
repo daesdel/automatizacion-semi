@@ -87,49 +87,57 @@ Proyectos del resumen: Plan Capacidad - Upgrade, Traslado, JUMPING - Capacidad r
 
 ## 8.6 Implementación (`fase8_adicionales.py`)
 
+Genera un libro **nuevo y limpio**: `resultados/ADICIONALES_SEMI_Limpio.xlsx`,
+con solo dos pestañas, sin gráficos ni hojas ocultas. No modifica
+`ADICIONALES SEGUIMIENTO.xlsx`.
+
 1. **Foto fija**: si no existe `ADICIONALES SEGUIMIENTO_WN-1.xlsx`, copia el
-   libro actual. Si existe, no se toca.
-2. **DATA IN**: vuelca `JIRA.xlsx` (`IR_VDF`, desde la fila 5) en
-   `DATA IN!A3`, limpiando antes las filas antiguas.
-3. **Rango 2 (`I3:O24`)**: copia las 7 columnas del Rango 3 de la foto fija
-   (`Q:W`), incluida **Real RFOA** en la columna `O`. La columna `P` queda
-   vacía como separador antes del Rango 3.
-4. **Rango 1 (`B3:G24`)**: tickets del DATA IN con `Prevision RFOA` (AD) en la
-   semana **N-1**, excluyendo los IR ya escritos en el Rango 2. La última
-   columna es `Real RFOA` (K).
-5. **Rango 3 (`Q3:W24`)**: tickets con `Prevision RFOA` en la semana **N**;
-   se rellenan también Prev RFOA y Real RFOA.
-6. **Rango 4 (`Y3:AD24`)**: tickets con `Prevision RFOA` en la semana **N+1**.
-   La columna `X` queda vacía como separador antes del Rango 4.
-7. **Resumen**: las fórmulas `COUNTIFS`/`SUMPRODUCT` de `AG2:AM16` se
-   mantienen; usan columnas completas o rangos hasta la fila 1998, por lo que
-   siguen contando si se añaden filas.
-8. Si hay más de 22 tickets en un rango, se insertan filas a partir de la 25
-   y se desplazan KO/re-planificación y listas auxiliares.
+   original (solo lectura). Si existe, no se toca. El original queda intacto.
+2. **DATA IN**: cabeceras de JIRA en fila 1, índice 1…261 en fila 2 y datos
+   desde `A3`.
+3. **Rango 2 (`I3:O`)**: copia las 7 columnas del Rango 3 (`Q:W`) de la foto
+   fija, incluida `Real RFOA` en `O`.
+4. **Rango 1 (`B3:G`)**: DATA IN con `Prevision RFOA` (AD) en la semana
+   **N-1**, excluyendo los IR ya escritos en Rango 2; última columna
+   `Real RFOA` (K).
+5. **Rango 3 (`Q3:W`)**: DATA IN con `Prevision RFOA` en la semana **N**
+   (Prev RFOA + Real RFOA).
+6. **Rango 4 (`Y3:AD`)**: DATA IN con `Prevision RFOA` en la semana **N+1**.
+7. **Resumen `AG2:AM16`**: proyectos en AG4:AG15, TOTAL en AG16 y fórmulas
+   `COUNTIFS` para:
+   - AH Planificado Wn-1
+   - AI Realizado Wn-1
+   - AJ Realizado no plan Wn-1
+   - AK Planificado Wn
+   - AL Realizado Wn
+   - AM Planificado Wn+1
+8. Si hay más de 22 tickets, se escriben filas adicionales por debajo de la
+   24. Las fórmulas usan columnas completas, así que siguen contando.
 
-La columna PIVOTE se escribe siempre como `RFOA`.
+`PIVOTE` siempre es `RFOA`. `P` y `X` quedan vacías como separadores.
 
-### Ejecución en Windows (producción)
+El libro se construye con **xlsxwriter**, por lo que el mismo script funciona
+en Mac y Windows, sin Excel COM.
+
+### Ejecución
 
 ```bat
 py automatizacion\fase8_adicionales.py
 ```
 
-Usa Excel COM: actualiza DATA IN y Planificación conservando gráficos.
-
-### Prueba en Mac
-
-Mac no tiene Excel COM; se usa openpyxl, que puede tardar y **perder
-gráficos**. No se debe ejecutar sobre el archivo original. Prueba segura:
-
 ```bash
-cp "Nueva carpeta (2)/ADICIONALES SEGUIMIENTO.xlsx" /tmp/ADICIONALES_TEST.xlsx
-python automatizacion/fase8_adicionales.py \
-  --adicionales=/tmp/ADICIONALES_TEST.xlsx \
-  --backup=/tmp/ADICIONALES_TEST_WN-1.xlsx \
-  --jira="Nueva carpeta (2)/JIRA.xlsx" \
-  --dry-run
+python3 automatizacion/fase8_adicionales.py
 ```
 
-El `--dry-run` calcula y muestra R1/R2/R3/R4 sin escribir. Para probar la
-escritura, quita `--dry-run` y revisa las hojas del archivo de `/tmp`.
+Salida: `Nueva carpeta (2)/resultados/ADICIONALES_SEMI_Limpio.xlsx`.
+
+### Dry-run
+
+```bash
+python automatizacion/fase8_adicionales.py --dry-run
+```
+
+Muestra R1/R2/R3/R4 sin escribir nada.
+
+La app ofrece **📝 Actualizar Adicionales (Fase 8)** y descarga directamente
+`ADICIONALES_SEMI_Limpio.xlsx`.

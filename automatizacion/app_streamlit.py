@@ -749,6 +749,7 @@ if st.button("📝 Actualizar Adicionales (Fase 8)", width="stretch"):
     ad = datos_f8 / "ADICIONALES SEGUIMIENTO.xlsx"
     jira_f8 = datos_f8 / "JIRA.xlsx"
     backup = datos_f8 / "ADICIONALES SEGUIMIENTO_WN-1.xlsx"
+    salida_f8 = datos_f8 / "resultados" / "ADICIONALES_SEMI_Limpio.xlsx"
     if not ad.is_file() or not jira_f8.is_file():
         st.warning("Faltan ADICIONALES SEGUIMIENTO.xlsx o JIRA.xlsx en la "
                    "carpeta de datos.")
@@ -756,8 +757,9 @@ if st.button("📝 Actualizar Adicionales (Fase 8)", width="stretch"):
         cmd = [
             sys.executable, str(HERE / "fase8_adicionales.py"),
             f"--adicionales={ad}", f"--jira={jira_f8}", f"--backup={backup}",
+            f"--out={salida_f8}",
         ]
-        _iniciar_job(cmd, "fase8", datos_f8, {"ad": str(ad)})
+        _iniciar_job(cmd, "fase8", datos_f8, {"ad": str(salida_f8)})
 
 f8res = st.session_state.get("f8_result")
 if f8res:

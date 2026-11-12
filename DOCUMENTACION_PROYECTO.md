@@ -18,7 +18,7 @@ ejecutando macros de Excel:
 | 5 | [Fase 5](FASE_5_PREVISIONES.md) | `fase5_previsiones.py` | `Seguimiento_Previsiones_Limpio.xlsx` |
 | 6 | [Fase 6](FASE_6_AUDITORIA.md) | `fase6_auditoria.py` | `Auditoria_Tickets_Faltantes.xlsx` |
 | 7 | [Fase 7](FASE_7_FICHERO.md) | `fase7_fichero.py` | `DDMMYYYY_FICHERO.xlsx` |
-| 8 | [Fase 8](FASE_8_ADICIONALES.md) | `fase8_adicionales.py` | `ADICIONALES SEGUIMIENTO.xlsx` actualizado |
+| 8 | [Fase 8](FASE_8_ADICIONALES.md) | `fase8_adicionales.py` | `ADICIONALES_SEMI_Limpio.xlsx` |
 
 ```
 semi/
