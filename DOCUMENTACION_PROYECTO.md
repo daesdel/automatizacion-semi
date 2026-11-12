@@ -50,12 +50,13 @@ semi/
 ### Dependencias
 
 ```bash
-pip install pandas openpyxl xlsxwriter python-calamine [streamlit] [psutil]
+pip install pandas openpyxl xlsxwriter python-calamine [streamlit] [psutil] [pywin32]
 ```
 
 - `python-calamine`: lectura rápida de Excel (6× más rápida que openpyxl).
 - `psutil`: opcional, solo para mostrar el pico de memoria.
 - `streamlit`: solo para la interfaz (Fase 4).
+- `pywin32`: solo Windows, para Excel COM (Fase 5).
 
 ---
 

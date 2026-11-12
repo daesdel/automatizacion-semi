@@ -141,3 +141,9 @@ Muestra R1/R2/R3/R4 sin escribir nada.
 
 La app ofrece **📝 Actualizar Adicionales (Fase 8)** y descarga directamente
 `ADICIONALES_SEMI_Limpio.xlsx`.
+
+### Validación en Mac
+
+- Dry-run con datos actualizados: **R1=15, R2=11, R3=20, R4=9**.
+- Ejecución real: `ADICIONALES_SEMI_Limpio.xlsx` de **8,5 MB**, 2 pestañas.
+- Foto fija `_WN-1` creada sin modificar el original.
