@@ -87,7 +87,7 @@ Proyectos del resumen: Plan Capacidad - Upgrade, Traslado, JUMPING - Capacidad r
 
 ## 8.6 Implementación (`fase8_adicionales.py`)
 
-Genera un libro **nuevo y limpio**: `resultados/ADICIONALES_SEMI_Limpio.xlsx`,
+Genera un libro **nuevo y limpio**: `resultados_app/ADICIONALES_SEMI_Limpio.xlsx`,
 con solo dos pestañas, sin gráficos ni hojas ocultas. No modifica
 `ADICIONALES SEGUIMIENTO.xlsx`.
 
@@ -96,10 +96,11 @@ con solo dos pestañas, sin gráficos ni hojas ocultas. No modifica
 2. **DATA IN**: cabeceras de JIRA en fila 1, índice 1…261 en fila 2 y datos
    desde `A3`.
 3. **Rango 2 (`I3:O`)**: copia las 7 columnas del Rango 3 (`Q:W`) de la foto
-   fija, incluida `Real RFOA` en `O`.
-4. **Rango 1 (`B3:G`)**: DATA IN con `Prevision RFOA` (AD) en la semana
+   fija. La columna `O` (Real RFOA) se **actualiza por IR** con el DATA IN
+   actual; si el ticket se ha ejecutado esta semana, se ve la fecha nueva.
+4. **Rango 1 (`B3:G`)**: DATA IN con **Real RFOA (K)** en la semana
    **N-1**, excluyendo los IR ya escritos en Rango 2; última columna
-   `Real RFOA` (K).
+   `Real RFOA`.
 5. **Rango 3 (`Q3:W`)**: DATA IN con `Prevision RFOA` en la semana **N**
    (Prev RFOA + Real RFOA).
 6. **Rango 4 (`Y3:AD`)**: DATA IN con `Prevision RFOA` en la semana **N+1**.
@@ -129,7 +130,7 @@ py automatizacion\fase8_adicionales.py
 python3 automatizacion/fase8_adicionales.py
 ```
 
-Salida: `Nueva carpeta (2)/resultados/ADICIONALES_SEMI_Limpio.xlsx`.
+Salida: `Nueva carpeta (2)/resultados_app/ADICIONALES_SEMI_Limpio.xlsx`.
 
 ### Dry-run
 
@@ -139,11 +140,13 @@ python automatizacion/fase8_adicionales.py --dry-run
 
 Muestra R1/R2/R3/R4 sin escribir nada.
 
-La app ofrece **📝 Actualizar Adicionales (Fase 8)** y descarga directamente
-`ADICIONALES_SEMI_Limpio.xlsx`.
+La app ofrece **📝 Actualizar Adicionales (Fase 8)** con campos opcionales para
+las rutas de `ADICIONALES SEGUIMIENTO.xlsx` y `JIRA.xlsx`; guarda en
+`resultados_app` y descarga `ADICIONALES_SEMI_Limpio.xlsx`.
 
 ### Validación en Mac
 
 - Dry-run con datos actualizados: **R1=15, R2=11, R3=20, R4=9**.
+- Cabeceras e índice de DATA IN verificados (261 columnas).
 - Ejecución real: `ADICIONALES_SEMI_Limpio.xlsx` de **8,5 MB**, 2 pestañas.
 - Foto fija `_WN-1` creada sin modificar el original.

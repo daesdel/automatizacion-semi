@@ -25,6 +25,7 @@ import warnings
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import openpyxl
 import xlsxwriter
 from python_calamine import CalamineWorkbook
 from xlsxwriter.utility import xl_col_to_name
@@ -46,7 +47,7 @@ def _arg(nombre, defecto):
 ADICIONALES = _arg("adicionales", BASE / "ADICIONALES SEGUIMIENTO.xlsx")
 BACKUP = _arg("backup", BASE / "ADICIONALES SEGUIMIENTO_WN-1.xlsx")
 JIRA = _arg("jira", BASE / "JIRA.xlsx")
-OUT = _arg("out", BASE / "resultados" / "ADICIONALES_SEMI_Limpio.xlsx")
+OUT = _arg("out", BASE / "resultados_app" / "ADICIONALES_SEMI_Limpio.xlsx")
 
 HOJA_PLAN = "PLANIFICACION"
 FILA_DATOS = 3
@@ -97,8 +98,17 @@ def _en_semana(v, offset):
 def leer_jira():
     wb = CalamineWorkbook.from_path(str(JIRA))
     filas = wb.get_sheet_by_name("IR_VDF").to_python(skip_empty_area=True)
-    hdr = filas[3]
+    hdr = list(filas[3])
     datos = filas[4:]
+    # Fallback de cabeceras: si calamine devolvió solo A, usar el DATA IN original.
+    if len(hdr) < 10 or sum(1 for h in hdr if h not in (None, "")) < 10:
+        try:
+            wb0 = openpyxl.load_workbook(ADICIONALES, read_only=True, data_only=True)
+            ws0 = wb0["DATA IN"]
+            hdr = [ws0.cell(row=1, column=c).value for c in range(1, 262)]
+            wb0.close()
+        except Exception:
+            pass
     idx = {h: i for i, h in enumerate(hdr) if h}
 
     def col(nombre, fila):
@@ -143,8 +153,14 @@ def leer_rango2(backup: Path):
 def construir(regs, rango2):
     claves2 = {str(r[0]).strip() for r in rango2}
     r1, r3, r4 = [], [], []
+    por_ir = {d["ir"]: d for d in regs}
+    for fila in rango2:
+        actual = por_ir.get(str(fila[0]).strip())
+        if actual is not None:
+            fila[6] = actual["real"]  # O: Real RFOA actualizada
+
     for d in regs:
-        if d["ir"] not in claves2 and _en_semana(d["prev"], -1):
+        if d["ir"] not in claves2 and _en_semana(d["real"], -1):
             r1.append([d["ir"], d["sr"], d["proy"], "RFOA", d["radio"], d["real"]])
         if _en_semana(d["prev"], 0):
             r3.append([d["ir"], d["sr"], d["proy"], "RFOA", d["radio"],
@@ -186,9 +202,8 @@ def construir_libro(hdr, filas_data, r1, r2, r3, r4):
 
     # DATA IN
     wd = wb.add_worksheet("DATA IN")
-    for j, h in enumerate(hdr, 1):
-        wd.write_string(0, j - 1, str(h) if h is not None else "", f_cab)
-        wd.write_number(1, j - 1, j, f_num)
+    wd.write_row(0, 0, [str(h) if h is not None else "" for h in hdr], f_cab)
+    wd.write_row(1, 0, list(range(1, len(hdr) + 1)), f_num)
     for i, fila in enumerate(filas_data, start=2):
         for j, v in enumerate(fila, 1):
             if isinstance(v, (datetime, date)):

@@ -100,6 +100,8 @@ def copiar_previsiones(wb, wv):
         for nombre in list(wb.sheetnames):
             if nombre != "PREVISIONES JUAN":
                 wb.remove(wb[nombre])
+    if ws.max_column > 79:  # límite CA
+        ws.delete_cols(80, ws.max_column - 79)
     return ws
 
 

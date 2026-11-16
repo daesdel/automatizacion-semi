@@ -270,7 +270,9 @@ def _render_job():
         else "Auditoría de tickets" if job["tipo"] == "auditoria"
         else "Comprobando integridad de los archivos" if job["tipo"] == "sanity"
         else "Fichero (Fase 7)" if job["tipo"] == "fase7"
-        else "Adicionales (Fase 8)"))
+        else "Adicionales (Fase 8)" if job["tipo"] == "fase8"
+        else f"Fase {job['tipo'][-1]}" if job["tipo"].startswith("fase")
+        else job["tipo"]))
     st.markdown(
         f"**Inicio:** {job['inicio_dt']:%d/%m/%Y %H:%M:%S}  ·  "
         f"**Transcurrido:** {int(trans // 60):02d}:{int(trans % 60):02d}"
@@ -297,6 +299,7 @@ def _render_job():
         logtxt = "\n".join(lineas)
         nombre_log = {"pipeline": "Pipeline", "auditoria": "Auditoría",
                       "fase7": "Fase 7", "fase8": "Fase 8",
+                      "fase1": "Fase 1", "fase2": "Fase 2", "fase5": "Fase 5",
                       "sanity": "Sanity"}.get(
                           job["tipo"], job["tipo"])
         etiqueta = f"{nombre_log} · {job['inicio_dt']:%d/%m %H:%M}"
@@ -333,6 +336,9 @@ def _render_job():
                     limpiar_subidas()
             except Exception as e:  # noqa: BLE001
                 st.session_state.job_error = str(e)
+        elif job["tipo"] in ("fase1", "fase2", "fase5"):
+            st.session_state.fase_msg = (
+                f"{job['tipo'].replace('fase', 'Fase ')} completada.")
         elif job["tipo"] == "fase8":
             f = Path(job["extra"]["ad"])
             if f.is_file():
@@ -525,6 +531,56 @@ else:
     else:
         st.success("Los 5 archivos están listos.")
 
+
+
+st.subheader("1b · Ejecución por fase")
+datos_btn = ruta if modo_ruta else BASE / "Nueva carpeta (2)"
+salida_btn = datos_btn / "resultados_app"
+f1, f2, f5 = st.columns(3)
+
+with f1:
+    if st.button("▶️ Ejecutar Fase 1", width="stretch"):
+        cmd = [
+            sys.executable, str(HERE / "fase1_seguimiento.py"),
+            f"--seguimiento={datos_btn / 'Seguimiento E2E VODAFONE.xlsx'}",
+            f"--jira={datos_btn / 'JIRA con DR.xlsx'}",
+            f"--hoja={datos_btn / 'Hoja de cálculo sin título.xlsx'}",
+            f"--datos={datos_btn}",
+            f"--jira-out={salida_btn / 'JIRA.xlsx'}",
+            f"--out={salida_btn}", "--refresh",
+        ]
+        _iniciar_job(cmd, "fase1", salida_btn,
+                     {"datos": str(datos_btn), "jira": str(datos_btn / "JIRA con DR.xlsx"),
+                      "hoja": str(datos_btn / "Hoja de cálculo sin título.xlsx")})
+
+with f2:
+    if st.button("▶️ Ejecutar Fase 2", width="stretch"):
+        cmd = [
+            sys.executable, str(HERE / "fase2_legal.py"),
+            f"--csv={datos_btn / 'MinisterioPowerBi.csv'}",
+            f"--out={salida_btn}",
+        ]
+        _iniciar_job(cmd, "fase2", salida_btn)
+
+with f5:
+    if st.button("▶️ Ejecutar Fase 5", width="stretch"):
+        prev = _buscar_prev()
+        legal = sorted(salida_btn.glob("*_legal ministerio.xlsx"),
+                       key=lambda p: p.stat().st_mtime)
+        cmd = [
+            sys.executable, str(HERE / "fase5_previsiones.py"),
+            f"--anterior={(prev or salida_btn) / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--jira={(salida_btn / 'JIRA.xlsx') if (salida_btn / 'JIRA.xlsx').is_file() else datos_btn / 'JIRA.xlsx'}",
+            f"--legal={legal[-1] if legal else salida_btn / (f'{date.today():%d%m%Y}_legal ministerio.xlsx')}",
+            f"--seguimiento={salida_btn / 'seguimiento.xlsx'}",
+            f"--hoja={datos_btn / 'Hoja de cálculo sin título.xlsx'}",
+            f"--revision={datos_btn / 'Revision Legalizacion SEMI SemN.xlsx'}",
+            f"--out={salida_btn / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+        ]
+        _iniciar_job(cmd, "fase5", salida_btn)
+
+if st.session_state.get("fase_msg"):
+    st.success(st.session_state.pop("fase_msg"))
 
 # ----------------------------------------------------------------------
 # 2 · Ejecución
@@ -743,13 +799,22 @@ if f7res:
 # 6 · Adicionales (Fase 8)
 # ----------------------------------------------------------------------
 st.subheader("6 · Adicionales (Fase 8)")
+ad_txt = st.text_input(
+    "Ruta de ADICIONALES SEGUIMIENTO.xlsx (opcional)",
+    placeholder=r"C:\...\ADICIONALES SEGUIMIENTO.xlsx")
+jira8_txt = st.text_input(
+    "Ruta de JIRA.xlsx para Fase 8 (opcional)",
+    placeholder=r"C:\...\JIRA.xlsx")
 if st.button("📝 Actualizar Adicionales (Fase 8)", width="stretch"):
     st.session_state.f8_result = None
     datos_f8 = ruta if modo_ruta else BASE / "Nueva carpeta (2)"
-    ad = datos_f8 / "ADICIONALES SEGUIMIENTO.xlsx"
-    jira_f8 = datos_f8 / "JIRA.xlsx"
+    ad = Path(ad_txt.strip()).expanduser() if ad_txt.strip() else (
+        datos_f8 / "ADICIONALES SEGUIMIENTO.xlsx")
+    datos_f8 = ad.parent
+    jira_f8 = Path(jira8_txt.strip()).expanduser() if jira8_txt.strip() else (
+        datos_f8 / "JIRA.xlsx")
     backup = datos_f8 / "ADICIONALES SEGUIMIENTO_WN-1.xlsx"
-    salida_f8 = datos_f8 / "resultados" / "ADICIONALES_SEMI_Limpio.xlsx"
+    salida_f8 = datos_f8 / "resultados_app" / "ADICIONALES_SEMI_Limpio.xlsx"
     if not ad.is_file() or not jira_f8.is_file():
         st.warning("Faltan ADICIONALES SEGUIMIENTO.xlsx o JIRA.xlsx en la "
                    "carpeta de datos.")

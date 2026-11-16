@@ -73,3 +73,6 @@ Navegador: <http://localhost:8501>
 
 ---
 
+
+
+> La app permite ejecutar Fase 1, Fase 2 y Fase 5 por separado, además del pipeline completo.

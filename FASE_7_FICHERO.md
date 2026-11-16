@@ -29,4 +29,6 @@ celdas de `Nodos` (tabla `Tabla1`), además de crear
 
 
 
+> PREVISIONES JUAN se recorta a la columna **CA** (79 columnas) en el FICHERO.
+
 > El cálculo de valores y el uso de Excel COM/pycel se detalla en [Fase 5](FASE_5_PREVISIONES.md#610-calculo-excel-com-o-pycel).
