@@ -65,6 +65,13 @@ def _comprobar_xlsx(path: Path, etiqueta: str) -> None:
             time.sleep(1)
 
 
+COLS_RFOA = [
+    "IR", "Región", "Proyecto & Subproyecto", "Proyectos Radio", "Codigo SR",
+    "Estado", "Prevision Site Ready", "Site Ready", "TX Ready", "Tx Disponible",
+    "Fecha TX ready prevista", "Fecha TX Disponible prevista",
+    "Datos Radio Enviados", "Plantillas Recibidas", "OTROS", "RESUMEN", "PIR",
+]
+
 MORADO = PatternFill("solid", fgColor="800080")
 BLANCO = Font(color="FFFFFF", bold=True)
 
@@ -128,34 +135,40 @@ def copiar_rfoa(wb, ws_prev):
         return
 
     min_col, min_row, max_col, max_row = _ref_limites(tabla.ref)
+    hdr = {str(ws_o.cell(row=min_row, column=c).value).strip(): c
+           for c in range(min_col, max_col + 1)}
+    faltan = [n for n in COLS_RFOA if n not in hdr]
+    if faltan:
+        print(f"    [AVISO] Faltan columnas en RFOA central: {faltan}")
+
     filas = []
     for r in range(min_row, max_row + 1):
         if r != min_row and ws_o.row_dimensions[r].hidden:
             continue
-        filas.append([ws_o.cell(row=r, column=c).value
-                      for c in range(min_col, max_col + 1)])
+        filas.append([ws_o.cell(row=r, column=hdr[n]).value if n in hdr else None
+                      for n in COLS_RFOA])
 
     ws = wb.create_sheet("RFOA SIN PREVISION")
     for r, fila in enumerate(filas, start=1):
         for c, v in enumerate(fila, start=1):
             dst = ws.cell(row=r, column=c, value=v)
-            src = ws_o.cell(row=min_row + r - 1, column=min_col + c - 1)
-            try:
-                dst._style = copy(src._style)
-            except Exception:
-                pass
-    for c in range(min_col, max_col + 1):
-        letra_o = get_column_letter(c)
-        letra_d = get_column_letter(c - min_col + 1)
-        ancho = ws_o.column_dimensions[letra_o].width
-        if ancho:
-            ws.column_dimensions[letra_d].width = ancho
+            if r > 1 and COLS_RFOA[c - 1] in hdr:
+                src = ws_o.cell(row=min_row + r - 1, column=hdr[COLS_RFOA[c - 1]])
+                try:
+                    dst._style = copy(src._style)
+                except Exception:
+                    pass
+    for c, nombre in enumerate(COLS_RFOA, start=1):
+        if nombre in hdr:
+            ancho = ws_o.column_dimensions[get_column_letter(hdr[nombre])].width
+            if ancho:
+                ws.column_dimensions[get_column_letter(c)].width = ancho
     for r in range(min_row, max_row + 1):
         alto = ws_o.row_dimensions[r].height
         if alto:
             ws.row_dimensions[r - min_row + 1].height = alto
 
-    for c in range(1, len(filas[0]) + 1):
+    for c in range(1, len(COLS_RFOA) + 1):
         celda = ws.cell(row=1, column=c)
         celda.font = Font(name="Calibri", size=11, bold=True,
                           color="FF000000")

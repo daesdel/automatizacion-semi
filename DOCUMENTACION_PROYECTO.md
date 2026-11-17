@@ -76,6 +76,7 @@ pip install pandas openpyxl xlsxwriter python-calamine [streamlit] [psutil] [pyw
 | `server.port does not work...` | `.streamlit/config.toml` con `developmentMode = false` |
 | La app se colapsa en Windows | Modo carpeta local + `Popen` en streaming (sin buffer) y timeout 60 min |
 | Fechas corruptas año 2525 | `agregar_fechas()` trabaja en microsegundos |
+| No encuentra el PREVISIONES anterior | Campo de ruta en la app + búsqueda por patrón `*Previsiones_Limpio*.xlsx` |
 
 ---
 

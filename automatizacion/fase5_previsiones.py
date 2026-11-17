@@ -195,12 +195,13 @@ def leer_subtareas():
     for fila in ws.iter_rows(min_row=2, values_only=True):
         ir = str(fila[1] or "").strip()
         tipo = str(fila[6] or "").strip()
+        tipo_norm = tipo.upper().replace("Ó", "O")
         valor = fila[5]
         if not ir:
             continue
-        if tipo == "Tx Single RAN" and ir not in tx:
+        if tipo_norm == "TX SINGLE RAN" and ir not in tx:
             tx[ir] = valor
-        elif tipo == "ACTIVACION OR" and ir not in act:
+        elif tipo_norm in ("ACTIVACION", "ACTIVACION OR") and ir not in act:
             act[ir] = valor
     wb.close()
     return tx, act
@@ -228,7 +229,8 @@ def construir_irs(previas, drive_rows) -> list:
     return prev + nuevos
 
 
-def calcular_manual(ir: str, jmap: dict, tx: dict, act: dict):
+def calcular_manual(ir: str, jmap: dict, tx: dict, act: dict,
+                    prev_aj=None):
     d = jmap.get(ir, {})
     e = str(d.get("e") or "")
     g = str(d.get("g") or "")
@@ -244,8 +246,11 @@ def calcular_manual(ir: str, jmap: dict, tx: dict, act: dict):
     h = " + ".join(nombres) if nombres else e
 
     ab = tx.get(ir, "Sin IR")
+    # Herencia: si el IR ya tenía un ticket AJ válido, se conserva.
+    if isinstance(prev_aj, str) and prev_aj.strip().upper().startswith("IR-"):
+        return h, ab, prev_aj.strip()
     at = str(d.get("at") or "").strip()
-    if at in ("", "-", "N/A", "n/a"):
+    if at.upper() in ("", "-", "N/A", "NA"):
         aj = "N/A"
     else:
         aj = act.get(ir, "Sin IR")
@@ -788,7 +793,7 @@ def main() -> None:
         print("    [AVISO] Sin archivo anterior: se genera desde cero, SIN heredar fórmulas.")
         headers = list(ph.HEADERS)
     tx, act = leer_subtareas()
-    print(f"    Subtareas: Tx Single RAN={len(tx):,} | ACTIVACION OR={len(act):,}")
+    print(f"    Subtareas: Tx Single RAN={len(tx):,} | ACTIVACION={len(act):,}")
 
     wb_jira = openpyxl.load_workbook(JIRA, read_only=True, data_only=True)
     wb_legal = openpyxl.load_workbook(LEGAL, read_only=True, data_only=True)
@@ -799,7 +804,14 @@ def main() -> None:
     irs = construir_irs(previas, drive_rows)
     print(f"    IRs: {len(previas):,} anteriores + "
           f"{len(irs) - len(previas):,} nuevos = {len(irs):,}")
-    calc = {ir: calcular_manual(ir, jmap, tx, act) for ir in irs}
+    aj_prev = {}
+    for _f in previas:
+        _ir = str(_f[0] or "").strip()
+        _aj = _f[35] if len(_f) > 35 else None
+        if _ir and isinstance(_aj, str) and _aj.strip().upper().startswith("IR-"):
+            aj_prev[_ir] = _aj
+    calc = {ir: calcular_manual(ir, jmap, tx, act, aj_prev.get(ir))
+            for ir in irs}
 
     print("[2] Escribiendo...")
     wb = xlsxwriter.Workbook(str(DESTINO), {"constant_memory": True,

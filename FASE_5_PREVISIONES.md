@@ -108,6 +108,14 @@ libro original):
 
 ### 6.5 Columnas manuales y DETALLE_TICKETS
 
+**AJ (IR-Activación)**:
+1. Si el IR ya existía y su AJ anterior era un ticket `IR-...`, se conserva.
+2. Si no, se mira `OSP Tecnología IR` (AT) de DATA IN:
+   - vacío, `-`, `N/A` o `NA` → `N/A`;
+   - con tecnologías → se busca el IR en `Subtareas` (G = `ACTIVACION`/`Activación OR`)
+     y se escribe el valor de F; si no está, `Sin IR`.
+
+
 - **A (IR)**: IRs del archivo anterior + los que aparecen en `drive` después
   del último IR anterior localizado (si el último ya no está, se busca hacia
   atrás el último presente).

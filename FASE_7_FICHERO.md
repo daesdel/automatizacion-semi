@@ -29,6 +29,12 @@ celdas de `Nodos` (tabla `Tabla1`), además de crear
 
 
 
+`RFOA SIN PREVISION` tiene exactamente 17 columnas: IR, Región,
+Proyecto & Subproyecto, Proyectos Radio, Codigo SR, Estado, Prevision Site
+Ready, Site Ready, TX Ready, Tx Disponible, Fecha TX ready prevista,
+Fecha TX Disponible prevista, Datos Radio Enviados, Plantillas Recibidas,
+OTROS, RESUMEN y PIR. Se omiten PDTE/INCIDENCIA/INSTALADOR/Columna1.
+
 > PREVISIONES JUAN se recorta a la columna **CA** (79 columnas) en el FICHERO.
 
 > El cálculo de valores y el uso de Excel COM/pycel se detalla en [Fase 5](FASE_5_PREVISIONES.md#610-calculo-excel-com-o-pycel).

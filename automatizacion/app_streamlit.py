@@ -362,8 +362,13 @@ def _render_job():
 
 
 
+PATRONES_PREV = ("*Previsiones_Limpio*.xlsx",
+                 "*PREVISIONES*LIMPIO*.xlsx",
+                 "*Previsiones*Limpio*.xlsx")
+
+
 def _buscar_prev():
-    """Carpeta con Seguimiento_Previsiones_Limpio.xlsx de una ejecución previa."""
+    """Carpeta con un Seguimiento_Previsiones_Limpio, aunque esté renombrado."""
     candidatas = []
     actual = st.session_state.get("resultado")
     if actual:
@@ -371,11 +376,37 @@ def _buscar_prev():
     if modo_ruta:
         candidatas += [ruta / "resultados_app", ruta, ruta / "resultados"]
     candidatas += [SUBIDAS / "resultados_app",
+                   BASE / "Nueva carpeta (2)" / "resultados_app",
                    BASE / "Nueva carpeta (2)" / "resultados",
                    BASE / "Nueva carpeta (2)"]
+    vistos = set()
     for c in candidatas:
+        if not c or str(c) in vistos:
+            continue
+        vistos.add(str(c))
         if (c / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
             return c
+        for patron in PATRONES_PREV:
+            if list(c.glob(patron)):
+                return c
+    return None
+
+
+def _prev_file(base=None):
+    """Ruta exacta del PREVISIONES anterior, admitiendo nombres alternativos."""
+    if base and Path(base).is_file():
+        return Path(base)
+    carpeta = Path(base) if base else _buscar_prev()
+    if not carpeta or not carpeta.is_dir():
+        return None
+    fijo = carpeta / "Seguimiento_Previsiones_Limpio.xlsx"
+    if fijo.is_file():
+        return fijo
+    for patron in PATRONES_PREV:
+        encontrados = sorted(carpeta.glob(patron),
+                             key=lambda p: p.stat().st_mtime, reverse=True)
+        if encontrados:
+            return encontrados[0]
     return None
 
 
@@ -403,8 +434,8 @@ def _sanity_tickets(jira, hoja):
     base = _buscar_prev()
     if base is None:
         return None
-    anterior = _contar_col(base / "Seguimiento_Previsiones_Limpio.xlsx",
-                           "DATA IN", 1, filas_cabecera=2)
+    prev_file = _prev_file(base)
+    anterior = _contar_col(prev_file, "DATA IN", 1, filas_cabecera=2)
     j = _contar_col(jira, "Hoja 1", 2)
     h = _contar_col(hoja, "Hoja 2", 1)
     actual = max([x for x in (j, h) if x is not None], default=None)
@@ -472,7 +503,8 @@ modo_ruta = ruta is not None
 anterior_txt = st.text_input(
     "Archivo anterior Seguimiento_Previsiones_Limpio.xlsx (opcional)",
     placeholder=r"C:\...\Seguimiento_Previsiones_Limpio.xlsx",
-    help="Si no se indica, se generará desde cero SIN heredar fórmulas.",
+    help="Puede ser cualquier nombre que contenga 'Previsiones_Limpio'. "
+         "Si se deja vacío, se busca automáticamente por patrón.",
 )
 anterior_path = Path(anterior_txt.strip()).expanduser() if anterior_txt.strip() else None
 revision_local = None
@@ -490,8 +522,10 @@ if modo_ruta:
         revision_local = rev if rev.is_file() else None
         if anterior_path and anterior_path.is_file():
             anterior_local = anterior_path
-        elif (ruta / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
-            anterior_local = ruta / "Seguimiento_Previsiones_Limpio.xlsx"
+        elif _prev_file(ruta):
+            anterior_local = _prev_file(ruta)
+        elif _prev_file():
+            anterior_local = _prev_file()
         if anterior_local is None:
             st.warning("Sin archivo anterior: PREVISIONES se generará desde cero, "
                        "sin heredar fórmulas.")
@@ -565,11 +599,12 @@ with f2:
 with f5:
     if st.button("▶️ Ejecutar Fase 5", width="stretch"):
         prev = _buscar_prev()
+        prev_file = _prev_file(prev or salida_btn)
         legal = sorted(salida_btn.glob("*_legal ministerio.xlsx"),
                        key=lambda p: p.stat().st_mtime)
         cmd = [
             sys.executable, str(HERE / "fase5_previsiones.py"),
-            f"--anterior={(prev or salida_btn) / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--anterior={prev_file if prev_file else salida_btn / 'Seguimiento_Previsiones_Limpio.xlsx'}",
             f"--jira={(salida_btn / 'JIRA.xlsx') if (salida_btn / 'JIRA.xlsx').is_file() else datos_btn / 'JIRA.xlsx'}",
             f"--legal={legal[-1] if legal else salida_btn / (f'{date.today():%d%m%Y}_legal ministerio.xlsx')}",
             f"--seguimiento={salida_btn / 'seguimiento.xlsx'}",
@@ -734,7 +769,8 @@ st.subheader("4 · Auditoría de tickets")
 if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
     st.session_state.audit_result = None
     base_audit = _buscar_prev()
-    if base_audit is None or not (base_audit / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+    prev_audit = _prev_file(base_audit)
+    if base_audit is None or prev_audit is None:
         st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
                    "carpeta con resultados_app completo.")
     else:
@@ -749,7 +785,7 @@ if st.button("🔎 Ejecutar Auditoría de Tickets", width="stretch"):
             sys.executable, str(HERE / "fase6_auditoria.py"),
             f"--jira={jira_a}", f"--hoja={hoja_a}",
             f"--seguimiento={base_audit / 'seguimiento.xlsx'}",
-            f"--prev={base_audit / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--prev={prev_audit}",
             f"--out={salida_audit}",
         ]
         _iniciar_job(cmd, "auditoria", base_audit)
@@ -772,7 +808,8 @@ rfoa_txt = st.text_input(
 if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
     st.session_state.f7_result = None
     base_f7 = _buscar_prev()
-    if base_f7 is None or not (base_f7 / "Seguimiento_Previsiones_Limpio.xlsx").is_file():
+    prev_f7 = _prev_file(base_f7)
+    if base_f7 is None or prev_f7 is None:
         st.warning("No hay una ejecución previa. Ejecuta el pipeline o indica una "
                    "carpeta con resultados_app completo.")
     else:
@@ -783,7 +820,7 @@ if st.button("📁 Generar Fichero (Fase 7)", width="stretch"):
         salida_f7 = base_f7 / f"{date.today():%d%m%Y}_FICHERO.xlsx"
         cmd = [
             sys.executable, str(HERE / "fase7_fichero.py"),
-            f"--prev={base_f7 / 'Seguimiento_Previsiones_Limpio.xlsx'}",
+            f"--prev={prev_f7}",
             f"--rfoa={rfoa}",
             f"--out={salida_f7}",
         ]
