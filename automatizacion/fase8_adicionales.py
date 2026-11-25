@@ -22,7 +22,7 @@ Multiplataforma: xlsxwriter. No usa Excel COM ni modifica el original.
 import shutil
 import sys
 import warnings
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -150,14 +150,38 @@ def leer_rango2(backup: Path):
     return salida
 
 
+def _real_valida(v):
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, time):
+        return None
+    if isinstance(v, str) and v.strip() not in ("", "-", "N/A", "NA"):
+        return v.strip()
+    return None
+
+
+def actualizar_real_rango2(rango2, regs):
+    """O = Real RFOA actual del DATA IN, cruzada por IR. Devuelve cambios."""
+    por_ir = {d["ir"]: d for d in regs}
+    cambios = 0
+    for fila in rango2:
+        actual = por_ir.get(str(fila[0]).strip())
+        if actual is None:
+            continue
+        nueva = _real_valida(actual.get("real"))
+        if nueva is None:
+            continue  # sin fecha real actual: se conserva la anterior
+        if fila[6] != nueva:
+            cambios += 1
+        fila[6] = nueva
+    return rango2, cambios
+
+
 def construir(regs, rango2):
     claves2 = {str(r[0]).strip() for r in rango2}
     r1, r3, r4 = [], [], []
-    por_ir = {d["ir"]: d for d in regs}
-    for fila in rango2:
-        actual = por_ir.get(str(fila[0]).strip())
-        if actual is not None:
-            fila[6] = actual["real"]  # O: Real RFOA actualizada
 
     for d in regs:
         if d["ir"] not in claves2 and _en_semana(d["real"], -1):
@@ -317,9 +341,11 @@ def main():
 
     hdr, filas_data, regs = leer_jira()
     rango2 = leer_rango2(fuente)
+    rango2, cambios_r2 = actualizar_real_rango2(rango2, regs)
     r1, r3, r4 = construir(regs, rango2)
     print(f"  JIRA: {len(regs):,} tickets")
     print(f"  Rangos: R1={len(r1)}, R2={len(rango2)}, R3={len(r3)}, R4={len(r4)}")
+    print(f"  Rango 2: {cambios_r2} fechas 'Real RFOA' actualizadas desde DATA IN")
 
     if "--dry-run" in sys.argv:
         print("  [DRY-RUN] No se escribe ningún archivo.")

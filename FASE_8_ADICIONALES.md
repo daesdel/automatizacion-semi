@@ -148,5 +148,6 @@ las rutas de `ADICIONALES SEGUIMIENTO.xlsx` y `JIRA.xlsx`; guarda en
 
 - Dry-run con datos actualizados: **R1=15, R2=11, R3=20, R4=9**.
 - Cabeceras e índice de DATA IN verificados (261 columnas).
+- Dry-run con cruce de Rango 2: **4 fechas Real RFOA actualizadas** desde el DATA IN actual, manteniendo los 11 IR.
 - Ejecución real: `ADICIONALES_SEMI_Limpio.xlsx` de **8,5 MB**, 2 pestañas.
 - Foto fija `_WN-1` creada sin modificar el original.
